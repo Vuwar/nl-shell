@@ -78,7 +78,12 @@ jobs:
   # drafts the release. Does nothing on a pull request — the jobs below cope
   # with it being skipped.
   release-please:
-    if: github.event_name == 'push'
+    # Not on a pull request, where there is no release to keep track of. That
+    # leaves the manual trigger able to run it, which is the way to re-sync a
+    # release PR that has gone stale — a draft release doesn't create its tag
+    # until it's published, and until then release-please has nothing to
+    # anchor to and will keep proposing the version after next.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write # to create the tag, the draft release and the release branch
