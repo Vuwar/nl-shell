@@ -36,7 +36,7 @@ jobs:
   # blocks nothing unless you add it to branch protection. Fixing it is editing
   # the PR title.
   commit-convention:
-    if: github.event_name == 'pull_request'
+    if: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check the PR title is a conventional commit
@@ -67,12 +67,19 @@ jobs:
           exit 1
 
   build:
-    # Skip the commit that merged a release PR: release.yml builds that one
+    # Two things skipped here, both of them the release PR.
+    #
+    # The PR itself, because it holds a version number and a changelog and no
+    # code — and because GitHub makes runs on a bot-authored PR wait for a
+    # human to approve them, so it would sit there needing a click every
+    # release to test nothing. The code in it was already built on main.
+    #
+    # And the commit that merges it, because release.yml builds that one
     # properly, with the real version number, and attaches it to the release.
-    # Building it twice would just be slower.
+    #
     # Quoted because the release commit subject contains a colon-space, which
     # unquoted YAML reads as the start of another mapping key.
-    if: "${{ !startsWith(github.event.head_commit.message || '', 'chore(main): release') }}"
+    if: "${{ !startsWith(github.head_ref || '', 'release-please--') && !startsWith(github.event.head_commit.message || '', 'chore(main): release') }}"
     uses: ./.github/workflows/build.yml
     with:
       # Not a real version — these builds are never released, and the name is
