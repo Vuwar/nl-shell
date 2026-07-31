@@ -5,6 +5,9 @@
       "release-type": "python",
       "package-name": "nl-shell",
 
+      "//tag": "package-name doubles as a monorepo component name, and a component ends up in the tag: without this the tags would be nl-shell-v0.1.0 rather than v0.1.0. One package here, so the component is only wanted for the changelog heading.",
+      "include-component-in-tag": false,
+
       "//": "Draft, so a release is still something a person publishes. It also gets the ordering right: the release is drafted first, the build attaches the installers to it, and only then does anyone see it.",
       "draft": true,
 
