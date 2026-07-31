@@ -55,15 +55,15 @@ jobs:
       AI_SHELL_VERSION: ${{ inputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: ai_shell_gui/frontend/package-lock.json
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -147,7 +147,7 @@ jobs:
           Move-Item "dist\installer\*.exe" .
           Compress-Archive -Path "dist\AI Shell" -DestinationPath "AI-Shell-$env:AI_SHELL_VERSION-windows-x64.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           retention-days: ${{ inputs.retention-days }}
@@ -163,15 +163,15 @@ jobs:
   python-package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: ai_shell_gui/frontend/package-lock.json
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -203,7 +203,7 @@ jobs:
           print(f"nl-shell {ai_shell.__version__} installs clean, front end present")
           PY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: python-package
           retention-days: ${{ inputs.retention-days }}
