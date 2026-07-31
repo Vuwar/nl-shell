@@ -1,0 +1,10 @@
+openai
+pywebview
+
+# The desktop window needs a web view from the OS. Windows uses the WebView2
+# runtime that ships with Windows 10/11, and macOS needs these bindings to
+# reach its own WebKit. Linux needs GTK and WebKit packages pip can't install
+# — see the README.
+pyobjc-core; sys_platform == 'darwin'
+pyobjc-framework-Cocoa; sys_platform == 'darwin'
+pyobjc-framework-WebKit; sys_platform == 'darwin'

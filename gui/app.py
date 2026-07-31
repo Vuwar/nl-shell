@@ -1,0 +1,331 @@
+"""pywebview desktop window: same Session core as the CLI, a floating React panel instead of a console."""
+
+import os
+import sys
+import threading
+
+import webview
+
+from ai_shell import Session, server
+from ai_shell.config import connection_error
+
+HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist", "index.html")
+
+# Input row is 56px + 1px border top and bottom; the window should hug it
+# exactly, otherwise the panel shows dead space below the input line.
+WINDOW_WIDTH = 560
+INITIAL_HEIGHT = 58
+MAX_HEIGHT = 560
+
+# The square the window folds down to when the app loses focus. It stays on
+# top like the panel does, so it has to earn the space it keeps: 48px is a
+# comfortable click target and little more. The fold is anchored to the
+# window's top-left corner (see _resize_window — the position never moves),
+# which is where the status dot already sits, so the panel reads as collapsing
+# into its own indicator rather than jumping somewhere new.
+MINI_SIZE = 48
+
+
+class Api:
+    """Methods here are callable from JS as window.pywebview.api.<name>(...)."""
+
+    def __init__(self):
+        self.session = Session()
+
+        # The model server is started here rather than before the window,
+        # because loading several gigabytes of weights takes seconds the user
+        # would otherwise spend looking at an empty desktop. The window opens
+        # first and says what it's waiting for; anything typed in the meantime
+        # is held by submit() until the server answers.
+        self._startup = {"state": "starting", "message": "Starting the model…"}
+        self._startup_lock = threading.Lock()
+        self._settled = threading.Event()  # set once the server is up or has failed
+        threading.Thread(target=self._start_server, daemon=True).start()
+
+        # Leading underscore: pywebview auto-exposes every public attribute
+        # of this object to JS by recursively walking it via dir()/getattr().
+        # A plain `self.window` sends it straight into the raw native window
+        # object, and WinForms' AccessibilityObject.Bounds.Empty property
+        # returns a fresh Rectangle on every read, so pywebview's identity-
+        # based cycle detection never triggers and it recurses until the
+        # interpreter's stack blows up. Underscore-prefixed names are
+        # skipped by that walk, so this keeps the reference without
+        # triggering it.
+        self._window = None  # set once create_window() returns
+
+    # --- starting the model server ------------------------------------------
+    def _set_startup(self, state, message):
+        with self._startup_lock:
+            self._startup = {"state": state, "message": message}
+
+    def _start_server(self):
+        try:
+            server.ensure_running(on_status=lambda line: self._set_startup("starting", line))
+            self._set_startup("ready", "")
+        except Exception as error:
+            # Including the unexpected ones: this runs in a thread nobody is
+            # waiting on, so an exception that escapes would leave the window
+            # sitting on "Starting the model…" forever with no way to know why.
+            self._set_startup("failed", str(error))
+        finally:
+            self._settled.set()
+
+    def startup_status(self):
+        """{"state": starting|ready|failed, "message"} — polled by the front
+        end while it waits, so the panel can say what's taking the time."""
+        with self._startup_lock:
+            return dict(self._startup)
+
+    def _startup_failure(self):
+        """The startup error once there is one, or None. Never blocks."""
+        with self._startup_lock:
+            return self._startup["message"] if self._startup["state"] == "failed" else None
+
+    def resize(self, width, height):
+        """Called on every content-size change so the frameless panel hugs
+        its content instead of the browser-window behavior of a fixed size,
+        and on every frame of the fold into (and out of) the collapsed tile.
+        The JS side eases the geometry itself frame-by-frame; this just
+        applies whatever it asks for."""
+        if not self._window:
+            return
+        width = max(MINI_SIZE, min(int(width), WINDOW_WIDTH))
+        height = max(MINI_SIZE, min(int(height), MAX_HEIGHT))
+        _resize_window(self._window, width, height)
+
+    def window_focused(self):
+        """Whether the OS considers this window the active one, or None where
+        that can't be asked.
+
+        The front end folds the panel away when the app isn't the one being
+        used, and it can't take the document's word for that: WebView2's idea
+        of focus is the control's, and it drifts — a window can be activated
+        without its web view taking focus, and then deactivated without the
+        document ever seeing a blur, leaving the panel sitting open over
+        somebody else's work. Which window the OS has in front is the actual
+        question, so this answers that one.
+        """
+        if sys.platform != "win32" or not self._window:
+            return None  # the JS side falls back to document.hasFocus()
+        try:
+            import ctypes
+
+            from webview.platforms.winforms import BrowserView
+
+            hwnd = BrowserView.instances[self._window.uid].Handle.ToInt32()
+            return bool(ctypes.windll.user32.GetForegroundWindow() == hwnd)
+        except Exception:
+            return None
+
+    def check_connection(self):
+        try:
+            self.session.check_connection()
+            return {"ok": True}
+        except Exception:
+            # The startup failure, when there was one, says what actually went
+            # wrong; the generic message can only say that nothing answered.
+            return {"ok": False, "error": self._startup_failure() or connection_error()}
+
+    def submit(self, user_input):
+        # Typing while the model is still loading is the normal case now that
+        # the window opens first, so a request that arrives early waits for the
+        # server instead of failing against one that isn't listening yet. The
+        # front end already has its thinking dots up, and the startup line
+        # underneath says what the wait is for.
+        self._settled.wait()
+        failure = self._startup_failure()
+        if failure:
+            return {
+                "command": None,
+                "search": None,
+                "risk": None,
+                "explanation": failure,
+                "options": [],
+                "error": True,
+            }
+
+        data = self.session.translate(user_input)
+        command = data.get("command")
+        options = data.get("options")
+        if command or not isinstance(options, list):
+            options = []
+        return {
+            "command": command,
+            # Set when the answer has to come off the internet; the front end
+            # then runs it through confirm() like any other pending action.
+            "search": data.get("search"),
+            "risk": data.get("risk"),
+            "explanation": data.get("explanation", ""),
+            # the model occasionally puts junk here; keep only short strings
+            "options": [o.strip() for o in options if isinstance(o, str) and o.strip()][:4],
+        }
+
+    def confirm(self):
+        """Runs the pending command; returns {"ok", "output"} or {"ok", "reason"}."""
+        return self.session.run_last()
+
+    def clear(self):
+        """Wipes the conversation behind a cleared screen — /clear and Esc.
+        What's gone from view must be gone from the model's context too."""
+        self.session.reset()
+        return {"ok": True}
+
+    def browse(self, path):
+        """Contents of `path` — clicking a folder in a listing."""
+        return self.session.list_directory(path)
+
+    def open_path(self, path):
+        """Opens `path` — clicking a file in a listing."""
+        return self.session.open_path(path)
+
+    def open_url(self, url):
+        """Opens `url` in the user's browser — clicking a source under a web
+        answer. Not open_path: a link off a search results page is the one
+        thing in this window that didn't come from this machine, and the
+        session checks it's really a web address before handing it to the OS."""
+        return self.session.open_url(url)
+
+    def quit(self):
+        """Close the window — the JS side calls this for a bare "exit".
+
+        Destroying on a short timer rather than inline: this runs inside
+        pywebview's JS-bridge handler, and tearing the window down before
+        that handler returns leaves the caller awaiting a reply from a
+        window that no longer exists.
+        """
+        if self._window:
+            threading.Timer(0.05, self._window.destroy).start()
+
+
+def main():
+    api = Api()
+
+    screen = webview.screens[0]
+    x = (screen.width - WINDOW_WIDTH) // 2
+    y = int(screen.height * 0.16)
+
+    window = webview.create_window(
+        "AI Shell",
+        HTML_PATH,
+        js_api=api,
+        width=WINDOW_WIDTH,
+        height=INITIAL_HEIGHT,
+        # pywebview's default min_size is (200, 100), which silently stops the
+        # window from ever shrinking to the bare 58px input bar — and WinForms
+        # enforces it against any resize, including the collapse to MINI_SIZE.
+        min_size=(MINI_SIZE, MINI_SIZE),
+        x=x,
+        y=y,
+        resizable=False,
+        frameless=True,
+        easy_drag=True,
+        # pywebview's Windows backend has no real per-pixel window
+        # transparency — transparent=True only blends the WebView2 control
+        # against its own Form's default (plain gray) background, not the
+        # desktop, which is what produced the gray box. shadow=True with
+        # transparent=False takes the DWM path instead, giving a real
+        # OS-composited soft shadow that blends into the desktop properly.
+        shadow=True,
+        on_top=True,
+        transparent=False,
+        background_color="#12101a",
+    )
+    api._window = window
+    window.events.shown += lambda: _apply_window_chrome(window)
+    # private_mode defaults to True, which wipes localStorage on every run —
+    # the settings screen persists its choices there.
+    webview.start(private_mode=False)
+
+
+# SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER
+_SWP_SIZE_ONLY = 0x0002 | 0x0004 | 0x0010 | 0x0200
+
+
+def _resize_window(window, width, height):
+    """Resize in place, without touching position, z-order or focus.
+
+    pywebview's own resize() ends in a SetWindowPos that leaves out
+    SWP_NOACTIVATE, which is harmless while the panel is being used and
+    unusable for the collapse: the app has just lost focus, and a window that
+    activates itself on every frame of the fold would yank the user out of
+    whatever they clicked on — and then re-expand the panel it was folding
+    away. Fixing the position at the same time is what anchors the collapse to
+    the top-left corner: the window shrinks toward the status dot rather than
+    around some point the user never chose.
+
+    Windows-only detail. Elsewhere pywebview's resize() is the same shape (its
+    GTK/Cocoa backends don't reactivate the window), so it stands in.
+    """
+    if sys.platform != "win32":
+        window.resize(width, height)
+        return
+    try:
+        import ctypes
+
+        from webview.platforms.winforms import BrowserView
+
+        form = BrowserView.instances[window.uid]
+        # pywebview's API is in logical pixels and scales on the way out;
+        # SetWindowPos speaks physical ones, so the same factor applies here.
+        scale = getattr(form, "_scale", 1) or 1
+        ctypes.windll.user32.SetWindowPos(
+            form.Handle.ToInt32(),
+            0,
+            0,
+            0,
+            int(width * scale),
+            int(height * scale),
+            _SWP_SIZE_ONLY,
+        )
+    except Exception:
+        # A pywebview whose internals moved: the panel still resizes, it just
+        # gets pywebview's activating version of it.
+        window.resize(width, height)
+
+
+# 0-255. WebView2 can't do per-pixel desktop transparency (tested: transparent
+# pixels composite against the control's own background, and DWM acrylic never
+# shows through), but a layered window CAN be uniformly translucent — the
+# closest to liquid glass this stack allows. ~86% opaque keeps text readable.
+WINDOW_ALPHA = 220
+
+
+def _apply_window_chrome(window):
+    """Round + translucent native window (Windows 11).
+
+    Frameless WinForms windows keep square corners by default, so the CSS
+    panel's rounded outline used to sit inside a square dark window — the
+    visible dark slivers at each corner. DWMWA_WINDOW_CORNER_PREFERENCE=ROUND
+    makes the OS clip (and shadow) the window itself with antialiased rounded
+    corners, so the panel can fill the window edge-to-edge. WS_EX_LAYERED with
+    LWA_ALPHA then lets the desktop faintly show through the whole window.
+
+    Windows-only, and little is missing elsewhere: macOS rounds and shadows a
+    frameless window itself, and on Linux that's the window manager's business
+    rather than the app's.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        from webview.platforms.winforms import BrowserView, DwmSetWindowAttribute
+
+        hwnd = BrowserView.instances[window.uid].Handle.ToInt32()
+        DwmSetWindowAttribute(hwnd, 33, 2)  # DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND
+        DwmSetWindowAttribute(hwnd, 20, 1)  # DWMWA_USE_IMMERSIVE_DARK_MODE
+        # Windows draws its own thin border line around rounded windows; hide
+        # it (DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE) — focus glow is done in CSS.
+        DwmSetWindowAttribute(hwnd, 34, 0xFFFFFFFE)
+
+        GWL_EXSTYLE, WS_EX_LAYERED, LWA_ALPHA = -20, 0x80000, 0x2
+        user32 = ctypes.windll.user32
+        style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED)
+        user32.SetLayeredWindowAttributes(hwnd, 0, WINDOW_ALPHA, LWA_ALPHA)
+    except Exception:
+        pass  # older pywebview or Windows 10: square opaque corners, still functional
+
+
+if __name__ == "__main__":
+    main()

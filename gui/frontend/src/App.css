@@ -1,0 +1,1304 @@
+/* Layout note: .panel-body must size to its CONTENT, never to the window.
+   The resize hook observes the body's height and animates the OS window to
+   match; if the body were height:100% it could never outgrow the window and
+   output would clip (the old bug). So it has no fixed height — and a fixed
+   width, so a window mid-fold can't reflow the measurement out from under it.
+   The panel around it is the window: it fills whatever the fold has left. */
+.shell {
+  width: 100%;
+}
+
+.panel {
+  --mx: 50%;
+  --my: 28px;
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  border-radius: var(--radius);
+  background: var(--glass-tint), var(--glass-base);
+  /* Edge lines are invisible at rest — the panel reads as a borderless glass
+     slab — and only light up while the input is focused. Border stays 1px so
+     nothing shifts when it appears. */
+  border: 1px solid transparent;
+  box-shadow: none;
+  /* clip, not hidden: `hidden` still makes this a scroll container, and the
+     panel has somewhere to scroll to (the sheen parks itself 900px off to the
+     right). Focusing the input while the window is mid-unfold and only 48px
+     wide then scrolls the panel sideways to reveal it, and nothing scrolls it
+     back — the whole panel ends up shifted left for good. `clip` isn't a
+     scroll container at all, so there is nothing to scroll. Engines too old
+     for it drop the line and keep `hidden` above; the unfold also resets the
+     scroll for those. */
+  overflow: hidden;
+  overflow: clip;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 260ms ease, box-shadow 260ms ease;
+}
+
+.panel-body {
+  /* Pinned, not stretched — see the layout note at the top of this file. */
+  width: var(--panel-w);
+  /* And never compressed: the panel is as tall as the window, so a flex item
+     free to shrink would be squeezed to fit the window it is supposed to be
+     telling how tall to be — new output would measure as no taller than the
+     window already is, and the panel would never grow again. */
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  transition: opacity 200ms ease;
+}
+
+/* Folded away: out of the layout so the panel is free to be a 48px tile, and
+   faded fast so the window is already shrinking behind an empty pane rather
+   than visibly guillotining its own content. */
+.panel.mini .panel-body {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 110ms ease;
+}
+
+/* Cursor-tracked refraction highlight: a soft light pool that follows the
+   pointer, like light bending through glass. --mx/--my come from JS. */
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    240px 140px at var(--mx) var(--my),
+    rgba(255, 255, 255, 0.075),
+    rgba(139, 123, 255, 0.03) 55%,
+    transparent 75%
+  );
+  opacity: 0;
+  transition: opacity 350ms ease;
+}
+
+.panel:hover::before {
+  opacity: 1;
+}
+
+.panel.focused {
+  border-color: rgba(139, 123, 255, 0.4);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
+    0 0 18px -4px var(--accent-faint);
+}
+
+/* --- collapsed tile ------------------------------------------------------
+   What's left of the panel when the app isn't the one being used. The window
+   itself does the shrinking (useWindowGeometry); this is only what sits in
+   the 48px that survives it. */
+.mini-orb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* The panel's 1px border, twice: this box is laid out inside it, so a full
+     --mini square would hang a pixel off the bottom-right and put everything
+     it centres a pixel down and right of the window's actual middle. */
+  width: calc(var(--mini) - 2px);
+  height: calc(var(--mini) - 2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  /* Folds out of, and back into, the corner it collapses toward. */
+  transform: scale(0.55);
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.panel.mini .mini-orb {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+  /* Waits for the window to be roughly tile-sized before appearing, so the
+     mark lands in the tile instead of floating over a panel still closing. */
+  transition-delay: 110ms;
+}
+
+.panel.mini:hover .mini-orb {
+  transform: scale(1.08);
+}
+
+.panel.mini:active .mini-orb {
+  transform: scale(0.94);
+  transition-duration: 90ms;
+}
+
+/* Working: the tile is the only thing on screen saying so, so the dots take
+   the accent rather than the dim grey they wear inside a full panel. */
+.mini-orb .thinking-dots span {
+  background: var(--accent);
+}
+
+/* A soft pool of light under the mark, so the tile reads as something lit
+   rather than a dark square with a symbol on it. */
+.mini-orb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(22px 22px at 50% 50%, rgba(139, 123, 255, 0.26), transparent 72%);
+}
+
+.mini-mark {
+  display: block;
+  width: 26px;
+  height: 26px;
+  filter: drop-shadow(0 0 7px var(--accent-soft));
+  transition: filter 180ms ease;
+}
+
+.panel.mini:hover .mini-mark {
+  filter: drop-shadow(0 0 11px var(--accent-soft)) brightness(1.14);
+}
+
+/* Something finished while you were away: the same colour the status dot
+   would have been, small enough to be a note rather than a demand. */
+.mini-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+/* The ring is what keeps it a badge: without it a bright dot this close to
+   the mark reads as part of it rather than as a note pinned to the corner. */
+.mini-badge.ok {
+  background: var(--ok);
+  box-shadow: 0 0 0 2px rgba(16, 14, 24, 0.7), 0 0 7px rgba(74, 222, 128, 0.4);
+}
+
+.mini-badge.error {
+  background: var(--danger);
+  box-shadow: 0 0 0 2px rgba(16, 14, 24, 0.7), 0 0 7px var(--danger-soft);
+}
+
+/* Nothing to report — idle, or thinking (which the dots already say). */
+.mini-badge.idle,
+.mini-badge.thinking {
+  display: none;
+}
+
+.panel.mini {
+  border-color: rgba(255, 255, 255, 0.1);
+  /* Lit top edge — the specular line a small piece of glass would catch. */
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1) inset;
+}
+
+.panel.mini:hover {
+  border-color: rgba(139, 123, 255, 0.45);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
+    0 0 18px -4px var(--accent-faint);
+}
+
+/* One-off light sweep across the bar when the app opens. */
+.panel-sheen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 58px;
+  width: 40%;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.08) 45%,
+    rgba(255, 255, 255, 0.14) 50%,
+    rgba(255, 255, 255, 0.08) 55%,
+    transparent 80%
+  );
+  transform: translateX(-120%) skewX(-12deg);
+  animation: sheenSweep 1100ms 250ms cubic-bezier(0.33, 1, 0.68, 1) forwards;
+}
+
+@keyframes sheenSweep {
+  to { transform: translateX(320%) skewX(-12deg); }
+}
+
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  min-height: 56px;
+  padding: 0 18px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+  transition: background 250ms ease, box-shadow 250ms ease, transform 250ms ease;
+}
+
+.status-dot.thinking {
+  background: var(--accent);
+  box-shadow: 0 0 0 0 var(--accent-soft);
+  animation: dotBreathe 1.1s ease-in-out infinite;
+}
+
+.status-dot.error {
+  background: var(--danger);
+  box-shadow: 0 0 10px var(--danger-soft);
+}
+
+.status-dot.ok {
+  background: var(--ok);
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.45);
+}
+
+@keyframes dotBreathe {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); transform: scale(1); }
+  50% { box-shadow: 0 0 0 6px rgba(139, 123, 255, 0); transform: scale(1.15); }
+}
+
+.input-wrap {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* The real input handles caret, selection and editing, but its glyphs are
+   transparent — .input-mirror paints the visible text so every character can
+   animate in. Font metrics must stay identical between the two layers. */
+.input-row input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--accent);
+  font-family: var(--ui);
+  font-size: 15px;
+  letter-spacing: normal;
+  padding: 0;
+}
+
+.input-row input::selection {
+  background: var(--accent-soft);
+}
+
+.input-mirror {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  white-space: pre;
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--ui);
+  font-size: 15px;
+  letter-spacing: normal;
+}
+
+.input-mirror span {
+  display: inline-block;
+  animation: charIn 170ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes charIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.85);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* The rotating placeholder. It replaces ::placeholder (which can't be
+   animated) with a real layer, so one hint can fade out as the next fades in.
+   Sits under the mirror and behind the caret, same metrics as both.
+
+   It's a placeholder, not a banner: quieter than the old ::placeholder was,
+   and quieter still (.hushed) once there's an answer on screen, so it never
+   competes with what the user actually asked for. */
+.input-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-family: var(--ui);
+  font-size: 14px;
+  letter-spacing: normal;
+  opacity: 0.6;
+  transform: translateY(0);
+  transition: opacity 320ms ease, transform 320ms ease;
+}
+
+.input-hint.lit {
+  opacity: 0.72;
+}
+
+.input-hint.hushed {
+  opacity: 0.34;
+}
+
+/* The outgoing half of a swap — see HINT_FADE in App.jsx. */
+.input-hint.out {
+  opacity: 0;
+  transform: translateY(-3px);
+}
+
+/* Keyed hints read as one line of text; the cap is a whisper of a container,
+   just enough to say "this is a key", never a button. */
+.input-hint-key {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  background: rgba(255, 255, 255, 0.045);
+  border-radius: 4px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+
+.input-hint-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .input-hint {
+    transition: opacity 260ms ease, color 250ms ease;
+    transform: none;
+  }
+
+  /* The window snaps between the two shapes (useWindowGeometry drops its
+     easing too), so the tile has nothing left to fold out of — it just is. */
+  .mini-orb,
+  .panel.mini .mini-orb,
+  .panel.mini:hover .mini-orb,
+  .panel.mini:active .mini-orb {
+    transform: none;
+    transition: opacity 120ms ease;
+  }
+}
+
+.input-row input:disabled + .input-mirror {
+  opacity: 0.5;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+  font-family: var(--mono);
+  animation: hintIn 300ms ease both;
+  transition: color 180ms ease, border-color 180ms ease, background 180ms ease;
+  cursor: default;
+}
+
+.hint:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+@keyframes hintIn {
+  from { opacity: 0; transform: translateX(6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* --- slash-command suggestions --- */
+.cmd-suggest {
+  border-top: 1px solid transparent;
+  border-image: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.14) 20%,
+      rgba(255, 255, 255, 0.14) 80%,
+      transparent
+    )
+    1;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: outputIn 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.cmd-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 130ms ease;
+}
+
+.cmd-item.active {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.cmd-item:active {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.cmd-name {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.cmd-alias {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.cmd-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+/* --- settings view --- */
+.settings {
+  padding: 14px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: outputIn 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.settings-head .hint {
+  cursor: pointer;
+}
+
+.settings-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.theme-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.theme-card:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.theme-card.active {
+  border-color: rgba(139, 123, 255, 0.55);
+  background: linear-gradient(180deg, rgba(139, 123, 255, 0.16), rgba(139, 123, 255, 0.07));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 0 14px -4px var(--accent-soft);
+}
+
+.theme-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.theme-desc {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.volume-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Whole row is the control — a 34px track is a small thing to ask someone to
+   hit when the label next to it means exactly the same. */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.switch-row:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.switch-row.on {
+  border-color: rgba(139, 123, 255, 0.4);
+}
+
+.switch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.switch-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.switch-desc {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.switch-track {
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) inset;
+  transition: background 200ms ease, box-shadow 200ms ease;
+}
+
+.switch-row.on .switch-track {
+  background: linear-gradient(180deg, rgba(139, 123, 255, 0.9), rgba(139, 123, 255, 0.65));
+  box-shadow: 0 0 12px -2px var(--accent-soft);
+}
+
+.switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e8e6f2;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.switch-row.on .switch-knob {
+  transform: translateX(14px);
+}
+
+.volume-row input {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    var(--accent) var(--fill, 50%),
+    rgba(255, 255, 255, 0.12) var(--fill, 50%)
+  );
+  outline: none;
+  cursor: pointer;
+}
+
+.volume-row input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow: 0 0 8px var(--accent-soft);
+  transition: transform 130ms ease, box-shadow 130ms ease;
+}
+
+.volume-row input::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 12px var(--accent-soft);
+}
+
+.volume-value {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  min-width: 38px;
+  text-align: right;
+}
+
+/* Only up while the model server starts. The window opens before the model is
+   loaded, so this is the panel saying what it's waiting for — same dim italic
+   as a system line, and the same top rule as anything else that appears under
+   the input row. */
+.boot-row {
+  border-top: 1px solid transparent;
+  border-image: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.14) 20%,
+      rgba(255, 255, 255, 0.14) 80%,
+      transparent
+    )
+    1;
+  padding: 11px 18px 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: entryIn 340ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.boot-text {
+  color: var(--text-dim);
+  font-size: 13px;
+  font-style: italic;
+  line-height: 1.45;
+}
+
+.output {
+  border-top: 1px solid transparent;
+  border-image: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.14) 20%,
+      rgba(255, 255, 255, 0.14) 80%,
+      transparent
+    )
+    1;
+  max-height: 460px;
+  overflow-y: auto;
+  padding: 12px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: outputIn 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes outputIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Esc: fade the whole output up and out before entries are dropped and the
+   window shrink animation takes over (see handleKeyDown in App.jsx). */
+.output.closing {
+  animation: outputOut 190ms ease both;
+}
+
+@keyframes outputOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-8px); }
+}
+
+.entry {
+  animation: entryIn 340ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+@keyframes entryIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.entry-user {
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+.entry-user .arrow {
+  color: var(--accent);
+  margin-right: 6px;
+}
+
+.entry-explanation {
+  color: var(--text);
+}
+
+.choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.choice-chip {
+  font-family: var(--ui);
+  font-size: 12.5px;
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  border-radius: 999px;
+  padding: 5px 13px;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease,
+    opacity 160ms ease;
+}
+
+.choice-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
+  transform: translateY(-1px);
+}
+
+.choice-chip:active:not(:disabled) {
+  transform: translateY(0) scale(0.96);
+}
+
+.choice-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.choice-chip.chosen {
+  opacity: 1;
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choice-chip.other {
+  color: var(--text-dim);
+}
+.choice-chip.other.chosen {
+  color: var(--accent);
+}
+
+.done-line,
+.fail-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.done-line {
+  color: var(--ok);
+}
+
+.fail-line {
+  color: var(--danger);
+}
+
+.done-mark,
+.fail-mark {
+  font-size: 12px;
+}
+
+.confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  border-radius: 12px;
+}
+
+.confirm-row span {
+  color: var(--text);
+  font-size: 13px;
+  flex: 1;
+}
+
+.btn {
+  font-family: var(--ui);
+  font-size: 12.5px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset;
+  transition: transform 140ms cubic-bezier(0.34, 1.56, 0.64, 1), filter 140ms ease,
+    box-shadow 140ms ease;
+}
+.btn:hover {
+  filter: brightness(1.14);
+  transform: translateY(-1px);
+}
+.btn:active {
+  transform: translateY(0) scale(0.95);
+  filter: brightness(0.95);
+}
+
+.btn.run {
+  background: linear-gradient(180deg, #ff8080, var(--danger));
+  color: #2a1014;
+}
+
+.btn.cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+.btn.cancel:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.entry-output {
+  position: relative;
+}
+
+pre.output-block {
+  margin: 4px 0 0;
+  /* Room for the floating copy button, so wrapped lines never run under it. */
+  padding-right: 54px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+
+/* --- copy button --- */
+.copy-btn {
+  font-family: var(--ui);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 3px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  /* Present but quiet — findable without competing with the output itself. */
+  opacity: 0.45;
+  transition: opacity 160ms ease, color 160ms ease, border-color 160ms ease,
+    background 160ms ease;
+}
+
+.entry:hover .copy-btn {
+  opacity: 1;
+}
+
+.copy-btn:hover {
+  opacity: 1;
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.copy-btn:active {
+  transform: scale(0.95);
+}
+
+.copy-btn.floating {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  /* Sits over the output, so it needs to stay legible against text. */
+  background: rgba(30, 27, 44, 0.92);
+}
+
+.copy-btn.copied {
+  opacity: 1;
+  color: var(--ok);
+  border-color: rgba(74, 222, 128, 0.45);
+  background: rgba(74, 222, 128, 0.12);
+}
+
+.copy-btn.failed {
+  opacity: 1;
+  color: var(--danger);
+  border-color: rgba(255, 107, 107, 0.45);
+  background: rgba(255, 107, 107, 0.12);
+}
+
+/* --- directory listing --- */
+.listing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.listing.loading {
+  opacity: 0.5;
+}
+
+.listing-path {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.crumb {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  padding: 1px 3px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease;
+}
+
+.crumb:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.crumb:disabled {
+  cursor: default;
+}
+
+.crumb.current {
+  color: var(--text);
+  padding: 1px 3px;
+}
+
+.crumb-sep {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.listing-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Rows are buttons, so they can't be display:contents cells of one shared
+   grid — a contents box can't paint a hover state. Fixed column widths keep
+   them aligned instead, with the name taking whatever is left. */
+.listing-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  width: 100%;
+  /* Negative margin lets the hover fill reach into the output's padding, so
+     the highlight looks like a full-width row rather than a floating pill. */
+  margin: 0 -8px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--ui);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.listing-row:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.listing-row:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.listing-row:disabled {
+  cursor: default;
+}
+
+.listing-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listing-name.dir {
+  color: var(--accent);
+}
+
+.listing-size,
+.listing-kind,
+.listing-date {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.listing-size {
+  width: 62px;
+  text-align: right;
+}
+
+.listing-kind {
+  width: 62px;
+}
+
+.listing-date {
+  width: 150px;
+  text-align: right;
+}
+
+.listing-chevron {
+  font-size: 15px;
+  color: var(--accent);
+}
+
+.listing-row:hover .listing-chevron {
+  color: var(--text);
+}
+
+.listing-empty {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.listing-error {
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+.listing-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.listing-toggle {
+  font-family: var(--ui);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.listing-toggle:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.listing-count {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.system-line {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.thinking-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.thinking-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  animation: dotJump 1.1s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes dotJump {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* --- a web answer, and the sources it was read out of --- */
+.answer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.answer-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+  /* Selectable, unlike most of the panel: an answer is something people
+     quote out of, and index.css turns selection off everywhere else. */
+  user-select: text;
+  cursor: text;
+}
+
+/* The small-model warning. Sits between the answer and its sources because
+   that's the order it has to be read in — the sentence above may be wrong,
+   the links below are not. Warm rather than red: nothing has failed. */
+.answer-caveat {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #d7b46a;
+  background: rgba(215, 180, 106, 0.08);
+  border-left: 2px solid rgba(215, 180, 106, 0.5);
+  border-radius: 0 5px 5px 0;
+  padding: 5px 9px;
+}
+
+.answer-sources {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Same full-bleed hover as a listing row — these are the same gesture (click
+   the thing to open it), so they shouldn't look like a different one. */
+.answer-source {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 0 -8px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--ui);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.answer-source:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.answer-source:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.answer-source:disabled {
+  cursor: default;
+}
+
+/* Matches the [1] the answer cites, so the two read as one thing. */
+.source-index {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.source-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Marks a source whose page was actually opened, rather than one the answer
+   only saw a search-engine teaser of. Deliberately quiet — it's a detail for
+   someone weighing the answer, not something to read on the way past. */
+.source-read {
+  font-family: var(--ui);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+
+/* The host, not the full URL: it's what says whether to believe the result,
+   and it's the part that fits. The whole URL is in the button's title. */
+.source-host {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.answer-source:hover .source-host {
+  color: var(--accent);
+}
+
+.answer-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.answer-count {
+  font-family: var(--ui);
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.7;
+}

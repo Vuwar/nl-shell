@@ -1,0 +1,84 @@
+:root {
+  color-scheme: dark;
+  --accent: #8b7bff;
+  --accent-soft: rgba(139, 123, 255, 0.35);
+  --accent-faint: rgba(139, 123, 255, 0.14);
+  --danger: #ff6b6b;
+  --danger-soft: rgba(255, 107, 107, 0.35);
+  --ok: #4ade80;
+  --text: #eef0f6;
+  --text-dim: #9a9aa8;
+
+  /* The OS window has no real per-pixel transparency on Windows (see
+     gui/app.py), so the "glass" is simulated: an opaque base tint with
+     translucent gradient layers, a specular top edge, and a cursor-tracked
+     highlight painted over it. --glass-base is the window's actual color. */
+  --glass-base: #12101a;
+  --glass-tint: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.085) 0%,
+    rgba(255, 255, 255, 0.035) 34%,
+    rgba(255, 255, 255, 0.012) 60%,
+    rgba(139, 123, 255, 0.04) 100%
+  );
+  --edge-highlight: rgba(255, 255, 255, 0.22);
+  --border-glass: rgba(255, 255, 255, 0.14);
+  --border-glass-hover: rgba(255, 255, 255, 0.22);
+
+  /* Matches the native DWM rounded-corner clip applied in gui/app.py, so the
+     CSS outline and the OS window silhouette are the same shape. Which is
+     also why the collapsed tile is a rounded square and not a circle: DWM
+     clips the window at this radius, and anything rounder than the window
+     itself would only show the window's own corners through the gap. */
+  --radius: 10px;
+
+  /* WINDOW_WIDTH and MINI_SIZE in gui/app.py — the two shapes the window
+     takes. The panel's content is laid out at --panel-w whatever the window
+     is currently doing (see the layout note in App.css). */
+  --panel-w: 560px;
+  --mini: 48px;
+
+  --mono: "Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace;
+  --ui: -apple-system, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  background: var(--glass-base);
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--ui);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+input,
+pre {
+  user-select: text;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  transition: background 150ms ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
