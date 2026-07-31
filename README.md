@@ -49,11 +49,14 @@ and reading a script before piping it into a shell is a good habit.
 If you already have Python 3.10+, this gets you both the window and the console
 REPL, plus `ai_shell` as an importable package:
 
-<!-- x-release-please-start-version -->
+```sh
+pip install "$(curl -fsSL https://api.github.com/repos/Vuwar/nl-shell/releases/latest \
+  | grep -o 'https://[^"]*\.whl')"
 ```
-pip install https://github.com/Vuwar/nl-shell/releases/latest/download/nl_shell-0.1.0-py3-none-any.whl
-```
-<!-- x-release-please-end -->
+
+On Windows, or if you'd rather see what you're installing: download the `.whl`
+from the [releases page](https://github.com/Vuwar/nl-shell/releases) and
+`pip install` the file.
 
 ```
 ai-shell          # console REPL
@@ -63,7 +66,9 @@ ai-shell-gui      # desktop window
 The distribution is called `nl-shell` because `ai-shell` was already taken on
 PyPI by an unrelated project. It isn't on PyPI at all yet — the wheels are
 attached to each [release](https://github.com/Vuwar/nl-shell/releases), which
-is why the URL above has a version in it.
+is why there's no plain `pip install nl-shell` to give you. The command above
+asks the releases API which wheel is current rather than naming a version,
+because a version written into this file would be wrong one release later.
 
 Installing straight from git (`pip install git+https://...`) gets you a working
 `ai-shell` but a `ai-shell-gui` that has nothing to draw: the React front end is
