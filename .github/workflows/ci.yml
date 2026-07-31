@@ -1,0 +1,82 @@
+# Every push to main and every pull request builds the whole thing, on all
+# four targets, and runs the tests on three of them.
+#
+# Nothing is published — the builds land as workflow artifacts on the run,
+# downloadable from the Actions tab for two weeks. The point is that main is
+# always known to be buildable, so merging a release PR is never the moment you
+# find out that the macOS job has been broken for a fortnight.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    # A tag doesn't build anything on its own — see release.yml, where releases
+    # are driven by merging a release PR rather than by pushing a tag.
+    tags-ignore: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # A newer push to the same branch makes the older run's artifacts pointless.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The version number is worked out from commit subjects, so a subject that
+  # doesn't parse is a commit that silently counts for nothing — no bump, no
+  # changelog line. Checking the PR title is what catches that, because a
+  # squash merge is what turns the title into the commit subject.
+  #
+  # This fails rather than merely warning, so it's visible, but a failing check
+  # blocks nothing unless you add it to branch protection. Fixing it is editing
+  # the PR title.
+  commit-convention:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the PR title is a conventional commit
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|docs|refactor|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .+'
+          if printf '%s' "$TITLE" | grep -Eq "$pattern"; then
+            echo "OK: $TITLE"
+            exit 0
+          fi
+          echo "::error title=PR title isn't a conventional commit::$TITLE"
+          cat <<'HELP'
+
+          The version number and the changelog are generated from commit
+          subjects, and this one won't parse — merged as is, it would bump
+          nothing and appear nowhere in the release notes.
+
+            fix: window opens off-screen with two monitors     -> 0.1.0 to 0.1.1
+            feat: settings screen can pick the model           -> 0.1.0 to 0.2.0
+            feat!: drop Python 3.10                            -> 0.1.0 to 0.2.0
+            docs: explain the Linux WebKit packages            -> no release
+
+          Types: feat, fix, perf, docs, refactor, test, build, ci, chore, revert
+          A scope is optional: fix(gui): ...
+
+          HELP
+          exit 1
+
+  build:
+    # Skip the commit that merged a release PR: release.yml builds that one
+    # properly, with the real version number, and attaches it to the release.
+    # Building it twice would just be slower.
+    # Quoted because the release commit subject contains a colon-space, which
+    # unquoted YAML reads as the start of another mapping key.
+    if: "${{ !startsWith(github.event.head_commit.message || '', 'chore(main): release') }}"
+    uses: ./.github/workflows/build.yml
+    with:
+      # Not a real version — these builds are never released, and the name is
+      # only there to tell one run's artifacts from another's. Numeric because
+      # the Windows installer's version resource can't be anything else.
+      version: 0.0.${{ github.run_number }}
+      retention-days: 14

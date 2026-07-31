@@ -9,7 +9,23 @@ import webview
 from ai_shell import Session, server
 from ai_shell.config import connection_error
 
-HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist", "index.html")
+def _frontend_root():
+    """The folder holding the built React app.
+
+    Next to this file, whether that's a checkout or an installed package. In a
+    PyInstaller build it's neither: the spec copies the same
+    `ai_shell_gui/frontend/dist` tree into the bundle, and sys._MEIPASS is
+    where it was unpacked to. Reading __file__
+    happens to work there too — PyInstaller rewrites it to point inside the
+    bundle — but only by coincidence of how frozen modules are named, so the
+    frozen case says where it means rather than relying on that.
+    """
+    if getattr(sys, "frozen", False):
+        return os.path.join(sys._MEIPASS, "ai_shell_gui", "frontend", "dist")
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist")
+
+
+HTML_PATH = os.path.join(_frontend_root(), "index.html")
 
 # Input row is 56px + 1px border top and bottom; the window should hug it
 # exactly, otherwise the panel shows dead space below the input line.
@@ -198,6 +214,21 @@ class Api:
 
 
 def main():
+    # Checked before anything else, because the alternative is a window that
+    # opens on nothing and gives no hint why. Two ways to get here: a checkout
+    # where nobody has run the front-end build yet, and a wheel that was built
+    # without it (dist/ is a build product and isn't in the repository, so
+    # `pip install` straight from git produces exactly that).
+    if not os.path.exists(HTML_PATH):
+        raise SystemExit(
+            f"The desktop window's front end isn't built — nothing at {HTML_PATH}.\n"
+            "From a checkout:\n"
+            "    npm --prefix ai_shell_gui/frontend install\n"
+            "    npm --prefix ai_shell_gui/frontend run build\n"
+            "If you installed this with pip, install a release wheel rather than\n"
+            "straight from the repository — the released wheels have it built in."
+        )
+
     api = Api()
 
     screen = webview.screens[0]

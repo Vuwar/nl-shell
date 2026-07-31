@@ -2,10 +2,30 @@
 
 import sys
 
-from ai_shell import Session
+from ai_shell import Session, server
 from ai_shell.config import connection_error
 from ai_shell.listing import format_listing
 from ai_shell.web import format_sources
+
+
+def run():
+    """Start the model server, then the REPL — the whole `ai-shell` command.
+
+    Separate from main() so that starting the server stays optional for anyone
+    driving the REPL against one they're already running, and so run_cli.py and
+    the installed console script are the same two steps rather than two
+    copies of them.
+
+    A failed start is fatal here, unlike in the desktop window: there's a
+    console in front of the user either way, so printing why and stopping beats
+    a prompt that rejects everything typed into it.
+    """
+    try:
+        server.ensure_running(on_status=print)
+    except server.ServerError as error:
+        print(error)
+        sys.exit(1)
+    main()
 
 
 def main():

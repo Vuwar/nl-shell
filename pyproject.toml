@@ -1,0 +1,88 @@
+# Packaging metadata for the pip route — for people who already have Python and
+# would rather type a command than download an installer.
+#
+# The distribution is called nl-shell because ai-shell was already taken on
+# PyPI by an unrelated project. The commands it installs are still `ai-shell`
+# and `ai-shell-gui`, and the modules are still ai_shell*; only the name on the
+# tin differs.
+#
+# Wheels are attached to each GitHub release rather than published to PyPI:
+#
+#     pip install https://github.com/Vuwar/nl-shell/releases/latest/download/nl_shell-<version>-py3-none-any.whl
+#
+# Building one from a checkout needs the front end built first — see the
+# note on [tool.setuptools.package-data] below.
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nl-shell"
+dynamic = ["version"]
+description = "A local natural-language shell: type plain English, run real commands."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Vugar Karimli" }]
+keywords = ["shell", "llm", "llama.cpp", "local", "terminal", "powershell"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Shells",
+]
+
+dependencies = [
+    # llama.cpp's server speaks the OpenAI API, so this is the client for a
+    # model running on the user's own machine. No account, no key.
+    "openai",
+    # The desktop window. A core dependency rather than an extra: the window is
+    # what most people install this for, and an `ai-shell-gui` that reports a
+    # missing package is a worse first impression than a slightly larger
+    # install for the few who only want the REPL.
+    "pywebview",
+]
+
+[project.optional-dependencies]
+# Linux only, and only half the story: GTK and WebKit themselves come from the
+# system package manager (see the README), and this is the Python binding that
+# needs them present to build. pywebview pins the PyGObject its GTK backend is
+# written against, so it's asked for through pywebview rather than by version.
+gtk = ["pywebview[gtk]"]
+
+[project.urls]
+Homepage = "https://github.com/Vuwar/nl-shell"
+Issues = "https://github.com/Vuwar/nl-shell/issues"
+Releases = "https://github.com/Vuwar/nl-shell/releases"
+
+[project.scripts]
+ai-shell = "ai_shell_cli.app:run"
+
+# gui-scripts, not scripts: on Windows this produces a pythonw launcher, so
+# starting the desktop panel doesn't also put a console window behind it.
+[project.gui-scripts]
+ai-shell-gui = "ai_shell_gui.app:main"
+
+[tool.setuptools.dynamic]
+# Read straight out of the source, so there's one place to bump and the release
+# workflow can check the tag agrees with it.
+version = { attr = "ai_shell.__version__" }
+
+[tool.setuptools.packages.find]
+# Named rather than left to auto-discovery: the repository root also holds
+# tests/ and packaging/, which are not part of the distribution.
+include = ["ai_shell*", "ai_shell_cli*", "ai_shell_gui*"]
+
+[tool.setuptools.package-data]
+# The built React app. It is NOT in the repository — it's a build product, and
+# .gitignore keeps it out — so a wheel built without running `npm run build`
+# first will install a GUI that can't draw anything. ai_shell_gui.app says so
+# in as many words rather than opening a blank window. The release workflow
+# always builds the front end before the wheel.
+ai_shell_gui = ["frontend/dist/*", "frontend/dist/**/*"]

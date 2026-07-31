@@ -17,6 +17,90 @@ a web search sends that search query to DuckDuckGo, the same as typing it into
 a search box would. Nothing else leaves the machine, and it only happens when
 the question can't be answered without it.
 
+Three ways in, none of them better than the others — pick whichever suits how
+you already install things. All three are tens of megabytes, because the
+inference engine and the model are fetched on first run rather than shipped
+inside the download.
+
+### One command
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/Vuwar/nl-shell/main/packaging/install.ps1 | iex
+```
+
+**macOS / Linux**:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Vuwar/nl-shell/main/packaging/install.sh | sh
+```
+
+Downloads the latest release for your machine and puts it where the OS expects
+it — Start Menu on Windows, `/Applications` on macOS, `~/.local` on Linux.
+Nothing needs an administrator. Set `AI_SHELL_VERSION` first to pin a release;
+on Windows, `$env:AI_SHELL_PORTABLE = "1"` unpacks a folder instead of running
+the installer. Both scripts are short and readable —
+[install.ps1](packaging/install.ps1), [install.sh](packaging/install.sh) —
+and reading a script before piping it into a shell is a good habit.
+
+### pip
+
+If you already have Python 3.10+, this gets you both the window and the console
+REPL, plus `ai_shell` as an importable package:
+
+<!-- x-release-please-start-version -->
+```
+pip install https://github.com/Vuwar/nl-shell/releases/latest/download/nl_shell-0.1.0-py3-none-any.whl
+```
+<!-- x-release-please-end -->
+
+```
+ai-shell          # console REPL
+ai-shell-gui      # desktop window
+```
+
+The distribution is called `nl-shell` because `ai-shell` was already taken on
+PyPI by an unrelated project. It isn't on PyPI at all yet — the wheels are
+attached to each [release](https://github.com/Vuwar/nl-shell/releases), which
+is why the URL above has a version in it.
+
+Installing straight from git (`pip install git+https://...`) gets you a working
+`ai-shell` but a `ai-shell-gui` that has nothing to draw: the React front end is
+a build product that isn't in the repository, and only the released wheels have
+it built in. Use a wheel, or [build from source](#or-run-from-source).
+
+On Linux, add the system GTK/WebKit packages listed below, then
+`pip install "nl-shell[gtk]"` for the Python binding.
+
+### Download a build by hand
+
+Everything is on the
+[releases page](https://github.com/Vuwar/nl-shell/releases):
+
+| | File | Notes |
+|---|---|---|
+| **Windows** | `AI-Shell-<version>-windows-x64-setup.exe` | Installs per-user, no administrator. `...-windows-x64.zip` is the same app as a folder if you'd rather not run an installer. |
+| **macOS** | `AI-Shell-<version>-macos-arm64.zip` (Apple Silicon) or `-macos-x64.zip` (Intel) | Unzip into `/Applications`. |
+| **Linux** | `ai-shell-<version>-linux-x64.tar.gz` | Needs GTK and WebKit2GTK 4.1 from your package manager (see below). Built on Ubuntu 22.04, so an older distro may not have a new enough glibc. |
+
+### About the warnings you'll see
+
+These builds aren't signed with a paid certificate, so both desktop OSes say so
+on first launch:
+
+- **Windows** — SmartScreen shows "Windows protected your PC". *More info* →
+  *Run anyway*.
+- **macOS** — Gatekeeper refuses an app from an "unidentified developer".
+  Right-click the app → *Open* → *Open*, or
+  `xattr -dr com.apple.quarantine "/Applications/AI Shell.app"`.
+
+The one-command installers clear the macOS one for you, which is worth knowing
+you're agreeing to. Neither warning means anything is wrong with the download;
+they mean nobody has paid a certificate authority about it.
+
+### Or run from source
+
 1. Install Python 3.10+ (check with `python --version`; on macOS and Linux it
    may be `python3`).
 
@@ -50,7 +134,7 @@ the question can't be answered without it.
    after any front-end edit):
 
    ```
-   cd gui/frontend
+   cd ai_shell_gui/frontend
    npm install
    npm run build
    ```
@@ -244,10 +328,14 @@ ai_shell/runtime.py finds llama-server, and installs one when there isn't one
 ai_shell/server.py  starts, waits for and stops llama-server
 ai_shell/web.py     web search, for questions this machine can't answer
 ai_shell/platforms/ everything that differs between Windows, macOS and Linux
-cli/                console REPL, built on ai_shell
-gui/                pywebview desktop window, built on ai_shell
-gui/frontend/       the React front end (build output in gui/frontend/dist is what the window loads)
+ai_shell_cli/       console REPL, built on ai_shell
+ai_shell_gui/       pywebview desktop window, built on ai_shell
+ai_shell_gui/frontend/  the React front end (build output in frontend/dist is what the window loads)
+packaging/          how the desktop app is built into something downloadable
+.github/workflows/  build.yml does the building; ci.yml and release.yml call it
 tests/              unittest suite; tests/test_live.py is the part that needs the internet
+pyproject.toml      the pip package (distribution name nl-shell; version read from ai_shell/__init__.py)
+release-please-config.json  what the commit messages are allowed to mean
 run_cli.py          `python run_cli.py`
 run_gui.py          `python run_gui.py`
 ```
@@ -264,6 +352,99 @@ OS to the model (its shell's name, its path style, worked examples in it), and
 how to find and launch installed applications — the Start Menu on Windows,
 `/Applications` on macOS, `.desktop` entries on Linux. Supporting another OS
 means adding a class there, not editing the core.
+
+## Builds and releases
+
+Every push to `main` and every pull request builds all four targets and runs
+the tests on Windows, macOS and Linux (`.github/workflows/ci.yml`). Nothing is
+published — the builds land as artifacts on the run, downloadable from the
+Actions tab for two weeks. The point is that `main` is always known to be
+buildable, so releasing is never the moment you find out the macOS job has been
+broken for a fortnight.
+
+### Versioning
+
+The version number is not written by hand. It comes from the commit messages,
+via [Conventional Commits](https://www.conventionalcommits.org/) — the subject
+line of each commit says what kind of change it is, and that decides the bump:
+
+| Commit subject | Bump | Example |
+|---|---|---|
+| `fix: ...` | patch | `0.1.0` → `0.1.1` |
+| `feat: ...` | minor | `0.1.0` → `0.2.0` |
+| `feat!: ...`, or `BREAKING CHANGE:` in the body | minor while below 1.0 | `0.1.0` → `0.2.0` |
+| `docs:`, `chore:`, `refactor:`, `test:`, `ci:`, `build:`, `perf:` | none | — |
+
+A scope is optional: `fix(gui): panel reopens after it folds away`.
+
+Breaking changes bump the *minor* rather than the major because this is a `0.x`
+project, which is the standard way of saying the interface can still move.
+Going to 1.0 is a deliberate act — put `Release-As: 1.0.0` in a commit body
+when you mean it.
+
+Pull request titles are checked against this format, because a squash merge
+turns the title into the commit subject. The check failing doesn't block a
+merge unless you add it to branch protection; it's there so a subject that
+would silently count for nothing gets noticed. A commit that doesn't parse
+isn't rejected — it just contributes no bump and no changelog line.
+
+### Releasing
+
+There's nothing to tag. [release-please](https://github.com/googleapis/release-please)
+watches `main` and keeps a pull request open — *"chore(main): release 0.2.0"* —
+holding the version bump and the changelog for everything merged since the last
+release. It updates itself as you merge more. Nothing is built or published
+while it sits there, so it doubles as a preview of what the next release would
+be.
+
+**Merging that PR is the release.** It tags the commit, drafts a GitHub release
+with the changelog, builds all four targets plus the wheel, and attaches them.
+The release stays a **draft** until you press publish.
+
+Two files are updated for you and shouldn't be edited by hand: `__version__` in
+`ai_shell/__init__.py` (which `pyproject.toml` reads, so it's the only place the
+version lives) and the wheel filename in the pip instructions above.
+
+One repository setting is required for any of this to work: **Settings →
+Actions → General → Allow GitHub Actions to create and approve pull requests**.
+Without it, release-please can't open its PR and the job fails with a
+permissions error.
+
+All three workflows call `.github/workflows/build.yml`, which is where the build
+actually lives; none of them duplicates it.
+
+To build locally:
+
+```
+npm --prefix ai_shell_gui/frontend install && npm --prefix ai_shell_gui/frontend run build
+pip install pyinstaller
+pyinstaller --noconfirm packaging/ai-shell.spec
+```
+
+The app lands in `dist/` — `dist/AI Shell/AI Shell.exe` on Windows,
+`dist/AI Shell.app` on macOS, `dist/ai-shell/ai-shell` on Linux. Building the
+front end first is not optional: the spec copies `ai_shell_gui/frontend/dist`,
+it doesn't produce it. (It won't silently ship an empty window — the app checks
+and says what's missing — but it also won't build one that works.)
+
+The pip package is the same front-end-first story, `python -m build` instead of
+PyInstaller:
+
+```
+npm --prefix ai_shell_gui/frontend install && npm --prefix ai_shell_gui/frontend run build
+pip install build && python -m build
+```
+
+Two things are deliberately *not* in the bundle. The inference engine and the
+model stay out, because `ai_shell/runtime.py` already fetches them into the
+user's config folder on first run — so the download is ~40MB instead of several
+gigabytes, and updating the app doesn't re-download the weights. The build is
+also `--onedir` rather than `--onefile`: a onefile executable unpacks itself to
+a temp folder on every launch, which costs seconds and looks like malware to a
+heuristic scanner, and an app whose job is running shell commands starts that
+argument at a disadvantage. Windows users still download one file —
+`packaging/windows/installer.iss` wraps the folder in an installer, which also
+fetches the WebView2 runtime on the rare machine that hasn't got it.
 
 ## Tests
 
@@ -312,9 +493,14 @@ out of two real ones.
 - On Linux, opening a file is fire-and-forget (`xdg-open` is backgrounded so
   the app doesn't block the shell), so a file with no handler registered
   fails silently rather than telling you why
-- The GUI isn't packaged as a standalone app yet — it still runs via
-  `python run_gui.py`. Packaging (PyInstaller + icon + shortcut) is a
-  planned next step.
+- The packaged builds have no icon and no code signature. The icon is missing
+  art, not missing code — drop `app.ico` and `app.icns` into `packaging/icons/`
+  and the next build picks them up. The signature costs money: a Windows
+  certificate is a few hundred a year, and macOS notarization needs a paid
+  Apple developer account, so until then both OSes warn about the download
+  (see [Download a build](#download-a-build)).
+- The macOS and Linux builds are produced by CI but have not been run by
+  anyone. Windows is the one that's been launched and used.
 - The window says what it's waiting for while the model loads, but the
   first-run *model* download has no percentage behind it — only a line saying
   a download is happening. (The engine install does show one.) llama.cpp
@@ -344,8 +530,10 @@ out of two real ones.
   percentage, the window currently only knows that a download is happening
 - Let the GUI's settings screen pick the model, listing what this machine can
   actually run
-- Package the GUI into a standalone app (PyInstaller) with an icon and a
-  Start Menu/Applications/desktop entry, so it opens like any other app
+- Draw an icon, and sign the builds, so the download stops being something the
+  OS warns about
+- Check the releases page on startup and say when there's a newer version —
+  the builds have no update mechanism at all right now
 - Add a config file for "always confirm" vs "trust more" modes
 - Add logging of every command run, so you have an audit trail
 - Teach it multi-step plans, so "back up my photos and then clear the folder"

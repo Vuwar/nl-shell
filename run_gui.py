@@ -11,7 +11,7 @@ the problem in its own error line, because a desktop app that vanishes with a
 message on a console nobody is looking at has told the user nothing.
 """
 
-from gui.app import main
+from ai_shell_gui.app import main
 
 if __name__ == "__main__":
     main()

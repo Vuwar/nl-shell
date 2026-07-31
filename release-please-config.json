@@ -1,0 +1,40 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "nl-shell",
+
+      "//": "Draft, so a release is still something a person publishes. It also gets the ordering right: the release is drafted first, the build attaches the installers to it, and only then does anyone see it.",
+      "draft": true,
+
+      "//prerelease": "0.x means breaking changes bump the minor, not the major. Staying pre-1.0 is a statement that the interface can still move, and bump-minor-pre-major is what keeps release-please from deciding otherwise.",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false,
+
+      "//files": "pyproject.toml reads the version out of ai_shell/__init__.py, so that file is the only place it lives — and the only place that needs updating. The README pins a wheel filename in its pip instructions, which would otherwise rot into a 404 one release after every bump.",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "ai_shell/__init__.py"
+        },
+        {
+          "type": "generic",
+          "path": "README.md"
+        }
+      ],
+
+      "changelog-sections": [
+        { "type": "feat", "section": "Features" },
+        { "type": "fix", "section": "Fixes" },
+        { "type": "perf", "section": "Performance" },
+        { "type": "docs", "section": "Documentation", "hidden": true },
+        { "type": "refactor", "section": "Refactoring", "hidden": true },
+        { "type": "test", "section": "Tests", "hidden": true },
+        { "type": "build", "section": "Build", "hidden": true },
+        { "type": "ci", "section": "CI", "hidden": true },
+        { "type": "chore", "section": "Chores", "hidden": true }
+      ]
+    }
+  }
+}

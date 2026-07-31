@@ -1,0 +1,211 @@
+# The build itself, for both the CI workflow and the release workflow to call.
+# It never publishes anything — it produces artifacts and stops. Deciding what
+# to do with them is the caller's job.
+#
+# Everything it makes:
+#
+#   AI-Shell-<v>-windows-x64-setup.exe   installer, no administrator needed
+#   AI-Shell-<v>-windows-x64.zip         the same app as a folder
+#   AI-Shell-<v>-macos-arm64.zip         Apple Silicon
+#   AI-Shell-<v>-macos-x64.zip           Intel
+#   ai-shell-<v>-linux-x64.tar.gz        needs WebKit2GTK on the machine
+#   nl_shell-<v>-py3-none-any.whl        the pip route
+#   nl_shell-<v>.tar.gz                  sdist
+#
+# None of the desktop builds contain llama.cpp or a model. Those are fetched
+# into the user's own config folder on first run (see ai_shell/runtime.py),
+# which is what keeps a download in the tens of megabytes rather than the
+# thousands — and what lets an app update leave several gigabytes of
+# already-downloaded weights alone.
+
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version string for artifact names and the macOS bundle"
+        required: true
+        type: string
+      retention-days:
+        description: "How long to keep the artifacts"
+        required: false
+        default: 14
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false # one platform's problem shouldn't hide another's
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x64
+          - os: macos-14 # Apple Silicon runner
+            target: macos-arm64
+          - os: macos-13 # the last Intel runner
+            target: macos-x64
+          - os: ubuntu-22.04 # oldest still-supported image: binaries built
+            target: linux-x64 # against a newer glibc won't run on older distros
+    runs-on: ${{ matrix.os }}
+    env:
+      AI_SHELL_VERSION: ${{ inputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ai_shell_gui/frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # WebKit and GTK, which pip can't install — the same packages the README
+      # tells a Linux user to install before running from source. The -dev ones
+      # are only needed to build PyGObject against them.
+      - name: Install GTK/WebKit (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgirepository1.0-dev libcairo2-dev pkg-config python3-dev \
+            gir1.2-gtk-3.0 gir1.2-webkit2-4.1 libwebkit2gtk-4.1-0
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # Through pywebview's own extra rather than by naming a version: it pins
+      # PyGObject to the release its GTK backend is written against, which is
+      # also safely below the 3.52 that switched to girepository-2.0 and won't
+      # build against the introspection libraries in 22.04.
+      - name: Install PyGObject (Linux)
+        if: runner.os == 'Linux'
+        run: pip install "pywebview[gtk]"
+
+      # Before building rather than in a job of its own: it gives the suite a
+      # run on all three platforms for free, and a build that fails its tests
+      # shouldn't get as far as producing installers.
+      - name: Run tests
+        run: python -m unittest discover -t . -s tests
+
+      - name: Build the front end
+        working-directory: ai_shell_gui/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build the app
+        run: pyinstaller --noconfirm packaging/ai-shell.spec
+
+      # An unsigned bundle won't launch at all on Apple Silicon, and an ad-hoc
+      # signature is enough to get past that. It is NOT notarization: a user who
+      # downloads this still meets Gatekeeper's "unidentified developer", and
+      # the README says which two clicks get past it. Real notarization needs a
+      # paid Apple Developer account.
+      - name: Ad-hoc sign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --force --deep --sign - "dist/AI Shell.app"
+
+      # ditto rather than zip: it's the only one that reliably preserves the
+      # symlinks and the executable bits inside a .app.
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/AI Shell.app" "AI-Shell-${AI_SHELL_VERSION}-${{ matrix.target }}.zip"
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: tar -czf "ai-shell-${AI_SHELL_VERSION}-linux-x64.tar.gz" -C dist ai-shell
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # The runner image ships Inno Setup, but not a pinned version, and the
+          # script uses directives from 6.3. Installing makes the build
+          # reproducible instead of dependent on this month's image.
+          choco install innosetup -y --no-progress
+          # Windows' own version resource has to be four numbers and nothing
+          # else, so a version like 0.2.0-rc1 keeps its name everywhere the user
+          # sees it and loses the suffix only in that field.
+          $numeric = ($env:AI_SHELL_VERSION -split '[-+]')[0]
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc "/DAppVersion=$env:AI_SHELL_VERSION" "/DVersionInfo=$numeric" `
+                  "/DDistDir=$PWD\dist\AI Shell" packaging\windows\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with $LASTEXITCODE" }
+          Move-Item "dist\installer\*.exe" .
+          Compress-Archive -Path "dist\AI Shell" -DestinationPath "AI-Shell-$env:AI_SHELL_VERSION-windows-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          retention-days: ${{ inputs.retention-days }}
+          path: |
+            *.zip
+            *.tar.gz
+            *.exe
+          if-no-files-found: error
+
+  # The pip route. One job, not four: the wheel is pure Python and works
+  # everywhere — but it still has to be built on a machine with npm, because
+  # the React app it carries is a build product that isn't in the repository.
+  python-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ai_shell_gui/frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the front end
+        working-directory: ai_shell_gui/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build wheel and sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      # A wheel that installs but whose window can't draw is the exact failure
+      # this is worth catching, and it costs one job step: install into a clean
+      # environment and check the front end came along.
+      - name: Check the wheel carries the front end
+        run: |
+          python -m venv /tmp/check
+          /tmp/check/bin/pip install --quiet dist/*.whl
+          /tmp/check/bin/python - <<'PY'
+          import os
+          import ai_shell
+          import ai_shell_gui.app as gui
+          from ai_shell_cli.app import run  # the console entry point must resolve
+
+          assert os.path.exists(gui.HTML_PATH), f"front end missing from the wheel: {gui.HTML_PATH}"
+          print(f"nl-shell {ai_shell.__version__} installs clean, front end present")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          retention-days: ${{ inputs.retention-days }}
+          path: dist/*
+          if-no-files-found: error
