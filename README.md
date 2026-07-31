@@ -337,7 +337,7 @@ ai_shell_cli/       console REPL, built on ai_shell
 ai_shell_gui/       pywebview desktop window, built on ai_shell
 ai_shell_gui/frontend/  the React front end (build output in frontend/dist is what the window loads)
 packaging/          how the desktop app is built into something downloadable
-.github/workflows/  build.yml does the building; ci.yml and release.yml call it
+.github/workflows/  build.yml — builds every push, releases when there's one to cut
 tests/              unittest suite; tests/test_live.py is the part that needs the internet
 pyproject.toml      the pip package (distribution name nl-shell; version read from ai_shell/__init__.py)
 release-please-config.json  what the commit messages are allowed to mean
@@ -361,7 +361,7 @@ means adding a class there, not editing the core.
 ## Builds and releases
 
 Every push to `main` and every pull request builds all four targets and runs
-the tests on Windows, macOS and Linux (`.github/workflows/ci.yml`). Nothing is
+the tests on Windows, macOS and Linux (`.github/workflows/build.yml`). Nothing is
 published — the builds land as artifacts on the run, downloadable from the
 Actions tab for two weeks. The point is that `main` is always known to be
 buildable, so releasing is never the moment you find out the macOS job has been
@@ -415,8 +415,9 @@ Actions → General → Allow GitHub Actions to create and approve pull requests
 Without it, release-please can't open its PR and the job fails with a
 permissions error.
 
-All three workflows call `.github/workflows/build.yml`, which is where the build
-actually lives; none of them duplicates it.
+It's all one workflow file. Building and releasing are the same pipeline with
+one extra step on the end, and splitting them meant every push to main ran two
+workflows, each needing a rule for skipping the other one's commits.
 
 To build locally:
 

@@ -1,6 +1,39 @@
-# The build itself, for both the CI workflow and the release workflow to call.
-# It never publishes anything — it produces artifacts and stops. Deciding what
-# to do with them is the caller's job.
+# Builds the app, and releases it when there's a release to cut. One file,
+# because "build it" and "release it" are the same pipeline with one extra step
+# on the end — splitting them meant every push to main ran two workflows, and
+# each needed a rule for skipping the other one's commits.
+#
+# Every push to main and every pull request builds all four desktop targets and
+# the wheel, and runs the tests on Windows, macOS and Linux. Those builds are
+# artifacts on the run, kept for two weeks, and nothing is published.
+#
+# Releasing is separate from tagging, and nothing here fires on a tag.
+# release-please watches main, and for every release-worthy commit keeps a pull
+# request open — "chore(main): release 0.2.0" — carrying the version bump and
+# the changelog for everything merged since the last release. Merging that PR
+# is the act of releasing:
+#
+#   merge the release PR
+#     -> release-please tags it and drafts a GitHub release with the changelog
+#     -> the same build below runs, with the real version number
+#     -> the installers are attached to that draft
+#     -> you press publish
+#
+# How the number is decided, from the commit subjects since the last release:
+#
+#   fix: ...                       patch    0.1.0 -> 0.1.1
+#   feat: ...                      minor    0.1.0 -> 0.2.0
+#   feat!: ...  / BREAKING CHANGE: minor    0.1.0 -> 0.2.0   (see below)
+#   docs:, chore:, refactor:, ...  nothing
+#
+# Below 1.0 a breaking change bumps the minor rather than the major, which is
+# the usual reading of semver for a 0.x project and what bump-minor-pre-major
+# in release-please-config.json asks for. Reaching 1.0 is a deliberate act:
+# put `Release-As: 1.0.0` in a commit body when you mean it.
+#
+# The build has to happen in this workflow rather than in one triggered by the
+# new tag, and that isn't a style choice: a tag pushed by GITHUB_TOKEN doesn't
+# trigger other workflows, by design, so a tag-triggered build would never run.
 #
 # Everything it makes:
 #
@@ -18,26 +51,97 @@
 # thousands — and what lets an app update leave several gigabytes of
 # already-downloaded weights alone.
 
-name: Build
+name: Build and release
 
 on:
-  workflow_call:
-    inputs:
-      version:
-        description: "Version string for artifact names and the macOS bundle"
-        required: true
-        type: string
-      retention-days:
-        description: "How long to keep the artifacts"
-        required: false
-        default: 14
-        type: number
+  push:
+    branches: [main]
+    # Tags don't build anything on their own; releases come from merging the
+    # release PR, and that push to main is what runs this.
+    tags-ignore: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  # A newer push to a pull request makes the older run's artifacts pointless.
+  # A run on main might be attaching installers to a release, and killing that
+  # halfway would leave a release with some of its files.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  # Keeps the release PR up to date, and on the run that merges it, tags and
+  # drafts the release. Does nothing on a pull request — the jobs below cope
+  # with it being skipped.
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to create the tag, the draft release and the release branch
+      pull-requests: write # to open and update the release PR
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # The version number is worked out from commit subjects, so a subject that
+  # doesn't parse is a commit that silently counts for nothing — no bump, no
+  # changelog line. Checking the PR title is what catches that, because a
+  # squash merge is what turns the title into the commit subject.
+  #
+  # This fails rather than merely warning, so it's visible, but a failing check
+  # blocks nothing unless you add it to branch protection. Fixing it is editing
+  # the PR title.
+  commit-convention:
+    if: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-please--') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the PR title is a conventional commit
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|docs|refactor|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .+'
+          if printf '%s' "$TITLE" | grep -Eq "$pattern"; then
+            echo "OK: $TITLE"
+            exit 0
+          fi
+          echo "::error title=PR title isn't a conventional commit::$TITLE"
+          cat <<'HELP'
+
+          The version number and the changelog are generated from commit
+          subjects, and this one won't parse — merged as is, it would bump
+          nothing and appear nowhere in the release notes.
+
+            fix: window opens off-screen with two monitors     -> 0.1.0 to 0.1.1
+            feat: settings screen can pick the model           -> 0.1.0 to 0.2.0
+            feat!: drop Python 3.10                            -> 0.1.0 to 0.2.0
+            docs: explain the Linux WebKit packages            -> no release
+
+          Types: feat, fix, perf, docs, refactor, test, build, ci, chore, revert
+          A scope is optional: fix(gui): ...
+
+          HELP
+          exit 1
+
   desktop:
+    needs: release-please
+    # release-please is skipped on pull requests, and a job whose dependency
+    # was skipped is skipped too unless it says otherwise. !cancelled() is what
+    # says otherwise; the rest is "don't build if release-please actually
+    # failed", and "don't build the release PR" — it holds a version number and
+    # a changelog, no code, and GitHub makes runs on a bot-authored PR wait for
+    # a human to approve them.
+    if: ${{ !cancelled() && needs.release-please.result != 'failure' && !startsWith(github.head_ref || '', 'release-please--') }}
     strategy:
       fail-fast: false # one platform's problem shouldn't hide another's
       matrix:
@@ -57,7 +161,10 @@ jobs:
     # than any of these builds has ever needed.
     timeout-minutes: 30
     env:
-      AI_SHELL_VERSION: ${{ inputs.version }}
+      # The real version when this run is releasing one; otherwise a throwaway
+      # that only has to tell one run's artifacts from another's. Numeric
+      # because the Windows installer's version resource can't be anything else.
+      AI_SHELL_VERSION: ${{ needs.release-please.outputs.version || format('0.0.{0}', github.run_number) }}
 
     steps:
       - uses: actions/checkout@v7
@@ -155,7 +262,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
-          retention-days: ${{ inputs.retention-days }}
+          retention-days: ${{ needs.release-please.outputs.release_created == 'true' && 90 || 14 }}
           path: |
             *.zip
             *.tar.gz
@@ -166,6 +273,8 @@ jobs:
   # everywhere — but it still has to be built on a machine with npm, because
   # the React app it carries is a build product that isn't in the repository.
   python-package:
+    needs: release-please
+    if: ${{ !cancelled() && needs.release-please.result != 'failure' && !startsWith(github.head_ref || '', 'release-please--') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -211,6 +320,44 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: python-package
-          retention-days: ${{ inputs.retention-days }}
+          retention-days: ${{ needs.release-please.outputs.release_created == 'true' && 90 || 14 }}
           path: dist/*
           if-no-files-found: error
+
+  # Only on the run that merged a release PR. Every other run stops above, with
+  # its builds sitting on the run as artifacts.
+  attach:
+    needs: [release-please, desktop, python-package]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to upload the assets
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - run: ls -la artifacts
+
+      # gh rather than a third-party action: it's already on the runner, and
+      # --clobber means re-running this after fixing one platform's build
+      # replaces that file instead of failing on one that's already there.
+      - name: Attach the builds to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh release upload "$TAG" artifacts/* --clobber
+
+      - name: Say where it went
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          {
+            echo "### $TAG is drafted"
+            echo ""
+            echo "The installers are attached. It stays a draft until you publish it:"
+            echo ""
+            echo "<https://github.com/${{ github.repository }}/releases>"
+          } >> "$GITHUB_STEP_SUMMARY"
