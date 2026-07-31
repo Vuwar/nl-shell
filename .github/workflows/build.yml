@@ -44,13 +44,18 @@ jobs:
         include:
           - os: windows-latest
             target: windows-x64
-          - os: macos-14 # Apple Silicon runner
+          - os: macos-15 # Apple Silicon
             target: macos-arm64
-          - os: macos-13 # the last Intel runner
+          - os: macos-15-intel # free on public repos; the -large ones are not
             target: macos-x64
           - os: ubuntu-22.04 # oldest still-supported image: binaries built
             target: linux-x64 # against a newer glibc won't run on older distros
     runs-on: ${{ matrix.os }}
+    # A retired runner label doesn't fail — the job queues for a runner that
+    # will never come, and the default gives it six hours to not come. This is
+    # how macos-13 announced its retirement, and thirty minutes is far more
+    # than any of these builds has ever needed.
+    timeout-minutes: 30
     env:
       AI_SHELL_VERSION: ${{ inputs.version }}
 
