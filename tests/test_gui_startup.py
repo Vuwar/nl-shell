@@ -127,7 +127,12 @@ class FrontEndPort(unittest.TestCase):
 
     def test_the_window_is_not_left_on_pywebviews_shared_default(self):
         started = {}
-        with mock.patch.object(gui.webview, "create_window"), \
+        # HTML_PATH is pointed at a file that certainly exists, because main()
+        # refuses to open a window when the front end hasn't been built — and
+        # the front end is a build product that CI produces *after* running the
+        # tests. Nothing here looks at the file; create_window is a mock.
+        with mock.patch.object(gui, "HTML_PATH", __file__), \
+             mock.patch.object(gui.webview, "create_window"), \
              mock.patch.object(gui.webview, "start", lambda **kw: started.update(kw)), \
              mock.patch.object(gui.webview, "screens", [mock.Mock(width=1920, height=1080)]), \
              mock.patch.object(gui, "Api"):
