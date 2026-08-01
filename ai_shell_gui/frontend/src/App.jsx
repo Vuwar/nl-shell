@@ -224,7 +224,7 @@ const HINTS = [
   { key: "Enter", text: "sends it — no need to know the command" },
   { text: "Anything destructive asks you first" },
   { text: "Ask a follow-up — it remembers the conversation" },
-  { key: "/settings", text: "has typing sounds and volume" },
+  { key: "/settings", text: "has typing sounds, volume and which model runs" },
   // Precise on purpose: the model really is local, and a web search really
   // does send the query out. Overstating the first would make a liar of the
   // app the first time somebody asks it to look something up.
@@ -799,6 +799,10 @@ function Entry({ entry, onConfirm, onChoose, onRetry, busy }) {
       );
     case "skipped":
       return <div className="entry system-line">Skipped.</div>;
+    case "notice":
+      // Why that took so long. Said once a session, and never urgent enough
+      // to be dismissable — it goes away with everything else on /clear.
+      return <div className="entry entry-notice">{entry.text}</div>;
     case "output":
       return (
         <div className="entry entry-output">
@@ -868,6 +872,10 @@ export default function App() {
   const foldedRef = useRef(false);
   const [view, setView] = useState("shell"); // shell | settings
   const [prefs, setPrefs] = useState(soundPrefs);
+  // What this machine can run, for the settings screen's model list. Fetched
+  // when that screen opens rather than at startup: it reads the filesystem,
+  // and nothing needs it until somebody is looking at it.
+  const [modelList, setModelList] = useState({ models: [], editable: true, model_dir: "" });
   const [selIdx, setSelIdx] = useState(0);
   // Everything the user has sent, oldest first, for Up/Down recall.
   const sent = useRef([]);
@@ -903,10 +911,40 @@ export default function App() {
     inputRef.current?.focus();
   }, [view]);
 
+  useEffect(() => {
+    if (view !== "settings" || !window.pywebview) return;
+    window.pywebview.api.list_models().then(setModelList).catch(() => {});
+  }, [view]);
+
   function updatePrefs(partial) {
     const next = { ...prefs, ...partial };
     saveSettings(next);
     setPrefs(next);
+  }
+
+  // The graphics-card explanation, wherever it came from. The route out of it
+  // is added here rather than in Python: the console's answer to the same
+  // situation is a typed word, and the shared text names neither.
+  function showNotice(notice) {
+    if (notice) {
+      addEntry({ kind: "notice", text: `${notice} Open /settings to switch model.` });
+    }
+  }
+
+  function switchModel(model) {
+    if (model.current || modelList.editable === false) return;
+    const size = model.installed ? "" : ` It's a ${model.weights_gb}GB download.`;
+    if (!window.confirm(`Switch to ${model.label}?${size}`)) return;
+    setView("shell");
+    window.pywebview.api.switch_model(model.id).then((result) => {
+      if (result && result.ok === false) {
+        addEntry({ kind: "error", text: result.reason });
+        return;
+      }
+      // The swap runs on a Python thread and reports through the same startup
+      // status the app's own launch does, so the boot row is what shows it.
+      watchStartup();
+    });
   }
 
   // The backend keeps the history, folder context and last listing that a
@@ -1100,6 +1138,12 @@ export default function App() {
           setStatus("error");
           upsertEntry(STARTUP_ERROR, { kind: "error", text: state.message, retry: true });
           return;
+        }
+        // The graphics card has room for the model, or it hasn't. Said here
+        // rather than during the wait: it describes how the app will behave
+        // from now on, not what it is doing at this second.
+        if (state.notice) {
+          addEntry({ kind: "notice", text: `${state.notice} Open /settings to switch model.` });
         }
         // Ready — confirm it can actually be talked to, which is a different
         // question from whether the process started.
@@ -1344,11 +1388,13 @@ export default function App() {
         } else {
           addEntry({ kind: "explanation", text: data.explanation });
         }
+        showNotice(data.notice);
         setStatus("ok");
         return;
       }
 
       addEntry({ kind: "explanation", text: data.explanation });
+      showNotice(data.notice);
 
       // None means run what the model wrote; a string is the user's own
       // version, which the session records as a correction.
@@ -1537,6 +1583,39 @@ export default function App() {
                   <span className="switch-knob" />
                 </span>
               </button>
+              <div className="settings-label">Model</div>
+              {modelList.editable === false && (
+                <div className="model-note">
+                  This app is using a model server you started yourself, so the model is yours to choose.
+                </div>
+              )}
+              <div className="model-grid">
+                {(modelList.models || []).map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    disabled={m.current || modelList.editable === false}
+                    className={`model-row${m.current ? " active" : ""}${m.fits ? "" : " unfit"}`}
+                    onClick={() => switchModel(m)}
+                  >
+                    <span className="model-name">{m.label}</span>
+                    <span className="model-meta">
+                      {m.current
+                        ? "in use"
+                        : !m.fits
+                        ? "too big for your card"
+                        : m.installed
+                        ? "downloaded"
+                        : `${m.weights_gb}GB download`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {modelList.model_dir && (
+                <div className="model-note">
+                  Models you've downloaded stay in {modelList.model_dir}, so switching back is instant.
+                </div>
+              )}
             </div>
           ) : (
             <>
