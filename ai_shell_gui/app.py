@@ -98,10 +98,41 @@ class Api:
         with self._startup_lock:
             return dict(self._startup)
 
-    def _startup_failure(self):
-        """The startup error once there is one, or None. Never blocks."""
+    def retry_startup(self):
+        """Start the model server again after a start that failed.
+
+        The window used to have one attempt: _start_server ran on a thread
+        that finished, and there was no way back except closing the app.
+
+        Every failure gets this, not a subset judged transient — deciding
+        which errors are worth another go is guesswork, and being wrong about
+        it strands somebody with no button on something that would have
+        worked. It only saves a relaunch; it never does anything a relaunch
+        wouldn't.
+        """
         with self._startup_lock:
-            return self._startup["message"] if self._startup["state"] == "failed" else None
+            if self._startup["state"] != "failed":
+                return {"ok": False}  # already running, or already retrying
+            self._startup = {"state": "starting", "message": "Starting the model…"}
+            self._settled.clear()
+        threading.Thread(target=self._start_server, daemon=True).start()
+        return {"ok": True}
+
+    def _wait_for_startup(self):
+        """Block until a start attempt has settled; return its failure, or None.
+
+        A loop rather than one wait, because a retry can clear _settled
+        between the wait returning and the status being read — which would
+        leave a caller looking at "starting", finding no failure, and
+        translating against a server that isn't up. State and message are read
+        together under the lock, so the answer is self-consistent.
+        """
+        while True:
+            self._settled.wait()
+            with self._startup_lock:
+                state = self._startup["state"]
+                if state != "starting":
+                    return self._startup["message"] if state == "failed" else None
 
     # --- updating the app ----------------------------------------------------
     def update_status(self):
@@ -166,7 +197,15 @@ class Api:
         except Exception:
             # The startup failure, when there was one, says what actually went
             # wrong; the generic message can only say that nothing answered.
-            return {"ok": False, "error": self._startup_failure() or connection_error()}
+            # Read rather than waited for — this is called from the front end's
+            # poll, which must not block behind a start still in progress.
+            with self._startup_lock:
+                failure = (
+                    self._startup["message"]
+                    if self._startup["state"] == "failed"
+                    else None
+                )
+            return {"ok": False, "error": failure or connection_error()}
 
     def submit(self, user_input):
         # Typing while the model is still loading is the normal case now that
@@ -174,8 +213,7 @@ class Api:
         # server instead of failing against one that isn't listening yet. The
         # front end already has its thinking dots up, and the startup line
         # underneath says what the wait is for.
-        self._settled.wait()
-        failure = self._startup_failure()
+        failure = self._wait_for_startup()
         if failure:
             return {
                 "command": None,
