@@ -2,7 +2,7 @@
 
 import sys
 
-from ai_shell import Session, server, updater
+from ai_shell import Session, config, models, server, updater
 from ai_shell.config import connection_error
 from ai_shell.listing import format_listing
 from ai_shell.platforms import current
@@ -26,6 +26,11 @@ def run():
     except server.ServerError as error:
         print(error)
         sys.exit(1)
+    # Said once the model is up rather than during the wait: it describes how
+    # the app will behave from here, not what it is doing right now.
+    notice = server.fit_notice()
+    if notice:
+        print(f"\n  {notice} Type 'model' to switch.")
     main()
 
 
@@ -75,11 +80,20 @@ def main():
         if user_input.lower() == "update":
             _install_update(updates)
             continue
+        # A bare word, matching `update`: this REPL has no command prefix, and
+        # inventing one for a single feature would leave two conventions where
+        # there is currently one.
+        if user_input.lower() == "model" or user_input.lower().startswith("model "):
+            _model_command(user_input[5:].strip())
+            continue
 
         data = session.translate(user_input)
         command = data.get("command")
         risk = data.get("risk")
         explanation = data.get("explanation", "")
+
+        if data.get("notice"):
+            print(f"  ({data['notice']} Type 'model' to switch.)")
 
         if not command and data.get("search"):
             print(f"→ {explanation}")
@@ -129,6 +143,56 @@ def main():
             print(format_listing(result["listing"], result["kind"]))
         else:
             print(result["output"] if result["output"] else "✓ Done")
+
+
+def _model_command(argument):
+    """`model` lists what this machine can run; `model 3` switches to one.
+
+    A bare word rather than a slash command, matching `update`. The tradeoff
+    is the one `update` already makes: somebody whose actual request is the
+    word "model" gets the list instead.
+    """
+    rows = models.catalog(
+        config.HARDWARE.get("vram_gb"),
+        config.HARDWARE.get("ram_gb"),
+        config.HARDWARE.get("vram_shared", False),
+        installed=config.installed_models(),
+        current_id=config.MODEL,
+    )
+
+    if not argument:
+        print()
+        for number, row in enumerate(rows, start=1):
+            if row["current"]:
+                note = "in use"
+            elif not row["fits"]:
+                note = "too big for your card"
+            elif row["installed"]:
+                note = "downloaded"
+            else:
+                note = f"{row['weights_gb']}GB download"
+            print(f"  {number}. {row['label']:<22} {note}")
+        print(f"\n  Type 'model 2' to switch. Downloads are kept in {config.MODEL_DIR}.\n")
+        return
+
+    if not argument.isdigit() or not 1 <= int(argument) <= len(rows):
+        print(f"  Pick a number from 1 to {len(rows)}.")
+        return
+
+    chosen = rows[int(argument) - 1]
+    if chosen["current"]:
+        print("  That's the one already running.")
+        return
+    if not chosen["fits"]:
+        print(f"  {chosen['label']} is bigger than this machine can hold — it will be slow.")
+    if not chosen["installed"]:
+        print(f"  Downloading {chosen['label']} — {chosen['weights_gb']}GB, this takes a while.")
+
+    result = server.switch_model(chosen["id"], on_status=lambda line: print(f"  {line}"))
+    if not result["ok"]:
+        print(f"  {result['reason']}")
+        return
+    print(f"  Now running {chosen['label']}.")
 
 
 def _edit_command(command):
