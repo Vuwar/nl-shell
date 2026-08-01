@@ -5,7 +5,7 @@
 # Don't edit it by hand. release-please owns this line — the trailing comment is
 # the marker it looks for — and works the number out from the commit messages
 # since the last release. See "Versioning and releases" in the README.
-__version__ = "0.1.0"  # x-release-please-version
+__version__ = "0.2.0"  # x-release-please-version
 
 from ai_shell.session import Session
 
