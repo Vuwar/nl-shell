@@ -6,7 +6,7 @@ import threading
 
 import webview
 
-from ai_shell import Session, server
+from ai_shell import Session, server, updater
 from ai_shell.config import connection_error
 
 def _frontend_root():
@@ -58,6 +58,12 @@ class Api:
         self._settled = threading.Event()  # set once the server is up or has failed
         threading.Thread(target=self._start_server, daemon=True).start()
 
+        # Looking for a newer version of the app, on its own thread, behind
+        # everything else. It downloads what it finds and then waits — see
+        # install_update() for the half the user has a say in.
+        self._updater = updater.Updater()
+        self._updater.start()
+
         # Leading underscore: pywebview auto-exposes every public attribute
         # of this object to JS by recursively walking it via dir()/getattr().
         # A plain `self.window` sends it straight into the raw native window
@@ -96,6 +102,26 @@ class Api:
         """The startup error once there is one, or None. Never blocks."""
         with self._startup_lock:
             return self._startup["message"] if self._startup["state"] == "failed" else None
+
+    # --- updating the app ----------------------------------------------------
+    def update_status(self):
+        """{"state": idle|checking|downloading|ready|failed, "version",
+        "message", "notes_url"} — polled by the front end, which only puts
+        anything on screen once the state is "ready"."""
+        return self._updater.status()
+
+    def install_update(self):
+        """Hand over to the updater and close.
+
+        The window has to go for the app's own files to be replaceable, and
+        the script that does the replacing is already waiting for this process
+        to end — so a successful start here is immediately followed by the
+        same shutdown as quit(). It restarts the app when it's done.
+        """
+        result = self._updater.install()
+        if result["ok"]:
+            self.quit()
+        return result
 
     def resize(self, width, height):
         """Called on every content-size change so the frameless panel hugs

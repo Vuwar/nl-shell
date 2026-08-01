@@ -2,7 +2,7 @@
 
 import sys
 
-from ai_shell import Session, server
+from ai_shell import Session, server, updater
 from ai_shell.config import connection_error
 from ai_shell.listing import format_listing
 from ai_shell.web import format_sources
@@ -41,9 +41,26 @@ def main():
         print(connection_error())
         sys.exit(1)
 
+    # Looks for a newer release and downloads it in the background; installing
+    # it is the "update" command below. relaunch=[] because this is a console
+    # session — coming back as a new window nobody asked for would be worse
+    # than the user typing `ai-shell` again.
+    updates = updater.Updater(relaunch=[])
+    updates.start()
+    announced = False
+
     print("AI Shell — type what you want in plain English. Ctrl+C to quit.\n")
 
     while True:
+        # Between prompts, not on a timer: an asynchronous line arriving while
+        # somebody is halfway through typing is the sort of thing that makes a
+        # REPL feel broken.
+        if not announced:
+            waiting = updates.status()
+            if waiting["state"] == "ready":
+                announced = True
+                print(f"  (version {waiting['version']} is downloaded — type 'update' to install it)\n")
+
         try:
             user_input = input("ai> ").strip()
         except (KeyboardInterrupt, EOFError):
@@ -54,6 +71,9 @@ def main():
             continue
         if user_input.lower() in ("exit", "quit"):
             break
+        if user_input.lower() == "update":
+            _install_update(updates)
+            continue
 
         data = session.translate(user_input)
         command = data.get("command")
@@ -99,6 +119,32 @@ def main():
             print(format_listing(result["listing"], result["kind"]))
         else:
             print(result["output"] if result["output"] else "✓ Done")
+
+
+def _install_update(updates):
+    """The `update` command: hand over to the updater and leave.
+
+    Leaving is the point — the files being replaced are the ones this process
+    is running out of, so the script the updater starts is waiting for this
+    interpreter to exit before it touches anything.
+    """
+    state = updates.status()
+    if state["state"] != "ready":
+        print(
+            {
+                "checking": "  Still checking for one.",
+                "downloading": f"  Downloading it now — {state['message']}",
+                "failed": f"  Couldn't fetch an update: {state['message']}",
+            }.get(state["state"], "  You're on the latest version.")
+        )
+        return
+
+    result = updates.install()
+    if not result["ok"]:
+        print(f"  {result['error']}")
+        return
+    print(f"  Installing {state['version']}. Run ai-shell again in a moment.")
+    sys.exit(0)
 
 
 if __name__ == "__main__":

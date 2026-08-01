@@ -44,6 +44,11 @@ the installer. Both scripts are short and readable —
 [install.ps1](packaging/install.ps1), [install.sh](packaging/install.sh) —
 and reading a script before piping it into a shell is a good habit.
 
+You only do this once. After that the app keeps itself current: it downloads
+new releases in the background and offers a Restart button when one is ready —
+see [Updating an installed copy](#updating-an-installed-copy), including how to
+switch it off.
+
 ### pip
 
 If you already have Python 3.10+, this gets you both the window and the console
@@ -330,6 +335,8 @@ ai_shell/config.py  settings: environment, then settings.json, then measured def
 ai_shell/models.py  the model list, and which one this machine should run
 ai_shell/hardware.py how much RAM and GPU memory there is
 ai_shell/runtime.py finds llama-server, and installs one when there isn't one
+ai_shell/updater.py notices a newer release of the app, and installs it on request
+ai_shell/fetch.py   downloading and unpacking, shared by those two
 ai_shell/server.py  starts, waits for and stops llama-server
 ai_shell/web.py     web search, for questions this machine can't answer
 ai_shell/platforms/ everything that differs between Windows, macOS and Linux
@@ -452,6 +459,51 @@ argument at a disadvantage. Windows users still download one file —
 `packaging/windows/installer.iss` wraps the folder in an installer, which also
 fetches the WebView2 runtime on the rare machine that hasn't got it.
 
+### Updating an installed copy
+
+Installed copies update themselves. On launch, in the background,
+`ai_shell/updater.py` asks the releases page whether there's a newer version,
+downloads the one asset matching how this copy was installed, and then stops:
+
+```
+Version 0.2.0 is ready to install          [ Restart ]
+```
+
+The download is automatic because it costs the user nothing to have it ready.
+The install is not, because an app that runs shell commands shouldn't replace
+itself mid-sentence. Clicking Restart closes the panel, swaps the app and
+opens it again; in the console REPL the same thing is the `update` command.
+
+How the swap happens depends on how the app got there, which the updater works
+out for itself:
+
+| How it was installed | How it updates |
+|---|---|
+| Windows installer (`unins000.exe` beside the exe) | runs the new setup silently — the `AppId` makes it an upgrade, not a second copy |
+| Windows portable zip | the folder is swapped for the new one |
+| macOS `.app` | the bundle is swapped |
+| Linux tarball | the folder is swapped |
+| pip | `pip install --upgrade` of the downloaded wheel |
+| a checkout of this repository | never — that's what `git pull` is for |
+
+Every one of those replaces files the running process has open, which Windows
+forbids outright. So the app doesn't do it: it writes a small `.cmd` or `.sh`
+script, starts it detached and quits, and the script waits for the process to
+disappear before touching anything. The old copy is moved aside *before* the
+new one lands, and put back if the new one won't move in — a failed update
+leaves a working app rather than half of two.
+
+Untouched by all of this: `%APPDATA%\ai-shell` (or `~/.config/ai-shell`), where
+the model weights and llama.cpp live. That's why an update is tens of megabytes
+and not several gigabytes.
+
+Two ways to turn it off — `"auto_update": false` in `settings.json`, or
+`AI_SHELL_AUTO_UPDATE=0` — after which nothing is checked and nothing is
+downloaded. The releases page is checked at most once every six hours, so
+launching the app five times in an afternoon is one request. Draft releases are
+invisible to it: GitHub's "latest" is the newest *published* release, so
+pressing publish is what actually ships a version to people.
+
 ## Tests
 
 ```
@@ -538,8 +590,6 @@ out of two real ones.
   actually run
 - Draw an icon, and sign the builds, so the download stops being something the
   OS warns about
-- Check the releases page on startup and say when there's a newer version —
-  the builds have no update mechanism at all right now
 - Add a config file for "always confirm" vs "trust more" modes
 - Add logging of every command run, so you have an audit trail
 - Teach it multi-step plans, so "back up my photos and then clear the folder"

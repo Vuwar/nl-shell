@@ -766,6 +766,11 @@ export default function App() {
   const [status, setStatus] = useState("idle"); // idle | thinking | ok | error
   // What the model server is doing while it starts, or null once it's up.
   const [booting, setBooting] = useState(null);
+  // The version waiting to be installed, once one has finished downloading.
+  // Null until then — a check nobody asked for shouldn't be visible while
+  // it's happening, only when it has something to offer.
+  const [updateReady, setUpdateReady] = useState(null);
+  const [updating, setUpdating] = useState(false);
   const [focused, setFocused] = useState(false);
   // Folded into the corner tile because the app isn't the one being used.
   const [minimized, setMinimized] = useState(false);
@@ -1026,6 +1031,62 @@ export default function App() {
       window.removeEventListener("pywebviewready", onReady);
     };
   }, []);
+
+  // The other thing happening in the background at startup: a look for a
+  // newer version of the app. Nothing is shown while it checks or downloads —
+  // an update the user can't act on yet is noise — so this watches for the
+  // one state that has anything to say, and then stops watching.
+  useEffect(() => {
+    if (!ready) return;
+    let stopped = false;
+    let idleTicks = 0;
+
+    async function watchUpdate() {
+      while (!stopped) {
+        let state;
+        try {
+          state = await window.pywebview.api.update_status();
+        } catch {
+          return; // window closing
+        }
+        if (stopped) return;
+        if (state.state === "ready") {
+          setUpdateReady(state);
+          return;
+        }
+        // "failed" is the end of it too, and deliberately silent: a failed
+        // update check is not the user's problem to solve mid-sentence.
+        if (state.state === "failed") return;
+        // "idle" is both "nothing to update" and "the thread hasn't started
+        // yet", so a few ticks of it are given before taking it as the answer.
+        if (state.state === "idle" && ++idleTicks > 4) return;
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    }
+
+    watchUpdate();
+    return () => {
+      stopped = true;
+    };
+  }, [ready]);
+
+  async function onInstallUpdate() {
+    if (updating) return;
+    setUpdating(true);
+    try {
+      const result = await window.pywebview.api.install_update();
+      // Success closes the window from the Python side, so anything that
+      // comes back here is a failure worth showing.
+      if (!result.ok) {
+        setUpdateReady(null);
+        addEntry({ kind: "error", text: result.error });
+      }
+    } catch {
+      setUpdateReady(null);
+    } finally {
+      setUpdating(false);
+    }
+  }
 
   function addEntry(partial) {
     const entry = { id: uid(), ...partial };
@@ -1393,6 +1454,28 @@ export default function App() {
             <div className="boot-row">
               <ThinkingDots />
               <span className="boot-text">{booting}</span>
+            </div>
+          )}
+
+          {/* A new version is already downloaded and waiting. It is never
+              applied without this click: the app closes, swaps itself out and
+              comes back, which is not something to do to someone mid-thought.
+              Nothing here is dismissable because nothing here is urgent — the
+              row goes away by being acted on, or by closing the app. */}
+          {updateReady && (
+            <div className="update-row">
+              <span className="update-dot" />
+              <span className="update-text">
+                Version {updateReady.version} is ready to install
+              </span>
+              <button
+                type="button"
+                className="btn update"
+                disabled={updating}
+                onClick={onInstallUpdate}
+              >
+                {updating ? "Restarting…" : "Restart"}
+              </button>
             </div>
           )}
 

@@ -25,6 +25,7 @@ import os
 # Submodules imported directly, not as `from ai_shell import ...`: this module
 # is reached through ai_shell/__init__.py importing Session, so the package
 # object is still half-built when these run and has no attributes yet.
+import ai_shell
 import ai_shell.hardware as hardware
 import ai_shell.models as models
 from ai_shell.platforms import current
@@ -124,6 +125,26 @@ SERVER_BINARY_EXPLICIT = bool(_NAMED_SERVER)
 # isn't silently swapped underneath the user on some later launch.
 RUNTIME_RELEASE = _SETTINGS.get("llama_cpp_release")
 
+# --- updating the app itself ----------------------------------------------
+# What this build calls itself, for ai_shell.updater to compare against the
+# latest release. The one attribute of the half-built package it is safe to
+# read here: __version__ is assigned in ai_shell/__init__.py above the import
+# that leads to this module, so by the time this line runs it is already set.
+VERSION = ai_shell.__version__
+
+# Whether the app may look for, and download, a newer version of itself. On by
+# default; the install is still never applied without the user asking for it
+# (see ai_shell/updater.py). Off entirely for anyone who'd rather their
+# software didn't phone home, and for packagers whose distribution does the
+# updating.
+AUTO_UPDATE = (os.environ.get("AI_SHELL_AUTO_UPDATE") or "").strip() != "0" and bool(
+    _SETTINGS.get("auto_update", True)
+)
+
+# When GitHub was last asked, as a Unix timestamp. Kept so that launching the
+# app five times in an afternoon is one request, not five.
+LAST_UPDATE_CHECK = _SETTINGS.get("update_checked_at") or 0
+
 # -1 offloads every layer to the GPU; 0 keeps the whole model on the CPU.
 # Deciding here rather than passing -1 always: llama.cpp will happily offload
 # part of a model that doesn't fit, which is slower than not offloading at all
@@ -175,6 +196,15 @@ def remember_runtime(tag):
     global RUNTIME_RELEASE
     RUNTIME_RELEASE = tag
     _SETTINGS["llama_cpp_release"] = tag
+    _write_settings(_SETTINGS)
+
+
+def remember_update_check(when):
+    """Record that the release page was just checked, so the next launch a
+    minute later doesn't ask again."""
+    global LAST_UPDATE_CHECK
+    LAST_UPDATE_CHECK = when
+    _SETTINGS["update_checked_at"] = when
     _write_settings(_SETTINGS)
 
 
