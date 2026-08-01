@@ -145,6 +145,16 @@ AUTO_UPDATE = (os.environ.get("AI_SHELL_AUTO_UPDATE") or "").strip() != "0" and 
 # app five times in an afternoon is one request, not five.
 LAST_UPDATE_CHECK = _SETTINGS.get("update_checked_at") or 0
 
+# Whether an edited command is recorded to CONFIG_DIR/corrections.jsonl. On by
+# default, and unlike anything that reads existing shell history this only sees
+# commands typed into this app, in this session, on their way to running — it
+# never leaves the machine. Off by default would collect nothing, which is the
+# same as not having the feature. See ai_shell/corrections.py for what a record
+# holds and what is scrubbed out of it first.
+CORRECTIONS = (os.environ.get("AI_SHELL_CORRECTIONS") or "").strip() != "0" and bool(
+    _SETTINGS.get("corrections", True)
+)
+
 # -1 offloads every layer to the GPU; 0 keeps the whole model on the CPU.
 # Deciding here rather than passing -1 always: llama.cpp will happily offload
 # part of a model that doesn't fit, which is slower than not offloading at all
