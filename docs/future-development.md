@@ -948,9 +948,12 @@ problem, far more useful than "it doesn't work".
 
 Not exciting, all real, mostly already on the README's list.
 
-- **Model download progress.** llama.cpp writes the percentage to its log; the
-  window says only that a download is happening. Effort S, and it's the first
-  five minutes of every new user's experience.
+- ~~**Model download progress.**~~ Done, and it turned out to be more than a
+  progress line. llama.cpp's own downloader gives up after three attempts and
+  then deletes what it fetched, so a connection that dropped twelve minutes in
+  cost the whole download. `ai_shell/weights.py` does the fetching now: real
+  percentages, resume from wherever it stopped, and a Try again button on a
+  failed start.
 - **Model choice in the settings screen**, listing what this machine can
   actually run. The measuring code in `ai_shell/hardware.py` already knows.
 - **Icons, and signing.** The icon is free. Signing is a few hundred a year plus

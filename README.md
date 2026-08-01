@@ -218,11 +218,31 @@ system prompt asks for a strict JSON shape and a fair number of rules at once,
 and families differ a lot in how reliably they hold that. Sizes within a
 family don't, so size is safe to vary.
 
+### The download, and losing your connection halfway through it
+
+The weights land in `models/` beside the settings file — `%APPDATA%\ai-shell\`
+on Windows, `~/.config/ai-shell/` elsewhere. They're several gigabytes, so
+they're fetched in a way that expects a connection to fail: a dropped transfer
+carries on from the byte it stopped at rather than starting over, and the app
+retries by itself, with a growing wait between attempts, before it says
+anything to you.
+
+If it does eventually give up, what already arrived stays on disk. The desktop
+window puts a **Try again** button on the error; in the console, running
+`ai-shell` again does the same thing. Either way it resumes rather than
+restarting. So does closing the app mid-download and opening it later.
+
+Every file is checked against the checksum HuggingFace publishes for it before
+it's used. That's a pass over the whole download, so you'll see a short
+"Checking the download…" at the end of the first run — a few seconds, bounded
+by how fast the disk reads rather than by anything clever.
+
 To override any of it:
 
 | Setting | What it does |
 | --- | --- |
 | `AI_SHELL_MODEL_REF` | The model to serve, as a HuggingFace ref — e.g. `Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M` |
+| `AI_SHELL_MODEL_DIR` | Where to keep the weights, if the default drive is the wrong one for 20GB |
 | `AI_SHELL_SERVER` | Full path to a `llama-server` of your own. Also turns the auto-install off |
 | `AI_SHELL_PORT` | Port to run it on (default 8080) |
 | `AI_SHELL_CONTEXT` | Context window in tokens (default 8192) |
