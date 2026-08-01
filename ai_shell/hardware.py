@@ -26,9 +26,16 @@ def probe():
         vram_gb = current.vram_gb()
     except Exception:
         vram_gb = None
+    try:
+        shared = current.vram_is_shared()
+    except Exception:
+        shared = False
     return {
         "ram_gb": round(ram_gb, 1) if ram_gb else None,
         "vram_gb": round(vram_gb, 1) if vram_gb else None,
+        # Recorded rather than re-asked: it describes the machine the recorded
+        # choice was made against, exactly like the two numbers above.
+        "vram_shared": shared,
     }
 
 
