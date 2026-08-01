@@ -205,9 +205,16 @@ class ApplyScripts(unittest.TestCase):
         update = dict(self.UPDATE, channel=updater.PIP, file="/tmp/nl_shell-0.2.0.whl")
         with mock.patch.object(updater, "install_root", lambda: None):
             script = updater._windows_script(update, [])
-        self.assertIn("-m pip install --upgrade --no-input", script)
-        self.assertIn("/tmp/nl_shell-0.2.0.whl", script)
-        self.assertNotIn("nl-shell", script)  # the file, never the index name
+        # The argument pip is given has to be the wheel that was already
+        # downloaded — installing by distribution name would go to an index and
+        # could fetch something else entirely.
+        self.assertIn('-m pip install --upgrade --no-input "/tmp/nl_shell-0.2.0.whl"', script)
+        # Asserted against the install target rather than the whole script: the
+        # script embeds sys.executable, so a plain "nl-shell" is not in it
+        # fails for anyone whose interpreter lives under a path containing the
+        # project's own name — a virtualenv in a checkout of this repository,
+        # which is the ordinary way to work on it.
+        self.assertNotIn('--no-input "nl-shell"', script)
 
     def test_posix_paths_with_spaces_survive_quoting(self):
         update = {
