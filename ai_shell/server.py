@@ -35,6 +35,7 @@ import urllib.request
 
 from ai_shell import config
 from ai_shell import runtime
+from ai_shell import weights
 from ai_shell.platforms import current
 
 # Where llama-server's own output goes. It's verbose, it's on its own timeline,
@@ -45,9 +46,13 @@ LOG_PATH = os.path.join(config.CONFIG_DIR, "llama-server.log")
 
 # How long to wait for a server that is running but hasn't answered yet. Only
 # reached when the process is alive and silent: a crash is noticed as soon as
-# it happens, and a first-run download keeps the process alive for as long as
-# it takes, so this is a backstop against a genuine hang rather than a budget.
-READY_TIMEOUT = 1800
+# it happens.
+#
+# The weights are on disk before the process starts (ai_shell.weights fetches
+# them), so this covers loading them into memory and nothing else — a genuine
+# hang, not a download. It was thirty minutes when the first run's
+# multi-gigabyte fetch happened inside this wait.
+READY_TIMEOUT = 300
 
 _process = None
 _keepalive = None  # whatever ties the child's life to ours; must stay referenced
@@ -82,13 +87,14 @@ def _is_ready():
         return False
 
 
-def _argv(binary):
+def _argv(binary, model_path):
     return [
         binary,
-        # -hf resolves and caches the model from HuggingFace, so a change of
-        # model is a config edit rather than a download the user has to go and
-        # do. Already-cached weights are reused, not re-fetched.
-        "-hf", config.MODEL_REF,
+        # A path, not -hf: llama.cpp's own downloader gets three attempts over
+        # six seconds and then discards what it fetched, which on a six-
+        # gigabyte model is the whole evening. ai_shell.weights does that job
+        # now and hands over a file that is already on disk and verified.
+        "-m", model_path,
         "--host", config.HOST,
         "--port", str(config.PORT),
         "-c", str(config.CONTEXT_SIZE),
@@ -142,11 +148,20 @@ def ensure_running(on_status=None):
                 "or set AI_SHELL_SERVER to its full path."
             ) from None
 
+        # Separate from the binary above, and separate from the start below:
+        # "there is nothing to run", "there are no weights to run it on" and
+        # "it wouldn't start" are three different problems with three
+        # different fixes, and collapsing them loses the one that matters.
+        try:
+            model_path = weights.ensure(config.MODEL_REF, config.MODEL_LABEL, on_status=say)
+        except weights.WeightsError as error:
+            raise ServerError(str(error)) from None
+
         try:
             # Appended to, not truncated: when a start fails and the user
             # tries again, the first failure is usually the informative one.
             _log = open(LOG_PATH, "a", encoding="utf-8", errors="replace")
-            _process, _keepalive = current.start_background(_argv(binary), _log)
+            _process, _keepalive = current.start_background(_argv(binary, model_path), _log)
         except FileNotFoundError:
             # Only reachable for a binary the user named: anything else came
             # from runtime.ensure, which just checked that it exists.
@@ -161,14 +176,15 @@ def ensure_running(on_status=None):
         atexit.register(stop)
 
     say(f"Starting {config.MODEL_LABEL} ({config.MODEL_REF})...")
-    _wait_until_ready(say)
+    _wait_until_ready()
     return True
 
 
-def _wait_until_ready(say):
-    started = time.monotonic()
-    deadline = started + READY_TIMEOUT
-    announced_download = False
+def _wait_until_ready():
+    # Nothing to report while this runs. It used to announce the first-run
+    # download, which happened inside this wait; that download is now finished
+    # and reported on before the process is started at all.
+    deadline = time.monotonic() + READY_TIMEOUT
 
     while time.monotonic() < deadline:
         if _is_ready():
@@ -182,13 +198,6 @@ def _wait_until_ready(say):
             # in the log, and none of them are worth waiting out.
             stop()
             raise _fail(f"The model server stopped while starting (exit code {exit_code}).")
-
-        # The weights are fetched before anything binds, so a long silence on
-        # the first run is a download rather than a stall. Saying so once is
-        # the difference between "it's working" and "it's hung".
-        if not announced_download and time.monotonic() - started > 15:
-            announced_download = True
-            say("Still starting — the model is downloading on first run, which can take a while.")
 
         time.sleep(0.5)
 
