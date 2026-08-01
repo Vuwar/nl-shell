@@ -218,6 +218,13 @@ Two things worth knowing about how it chooses:
   full capacity looks fine and isn't: a model that doesn't quite fit gets paged
   across the bus a piece at a time, which is *slower* than never having touched
   the card at all.
+- **As much of the model goes on the card as fits, not all or nothing.** How
+  much is decided at each start, from what's free at that moment. On an 8GB
+  card with a browser open, one 7B measured 16.5 tokens a second entirely on
+  the processor, 45 with 27 of its 28 layers on the card, and **7** with all 28
+  — the last layer tips it past what the driver keeps resident, and everything
+  starts crossing the bus. Filling to a margin gets most of the win and can't
+  land on that cliff.
 
 Every size is the same model family (Qwen2.5-Coder). That's deliberate: the
 system prompt asks for a strict JSON shape and a fair number of rules at once,

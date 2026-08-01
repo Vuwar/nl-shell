@@ -104,7 +104,14 @@ class Api:
         """
         with self._startup_lock:
             status = dict(self._startup)
-        status["notice"] = server.fit_notice() if status["state"] == "ready" else None
+        # Claimed through the session so this and the slow-answer explanation
+        # can't both land: they are the same sentence about the same card, and
+        # hearing it twice with two different numbers reads as a broken app.
+        status["notice"] = (
+            self.session.claim_notice(server.fit_notice())
+            if status["state"] == "ready"
+            else None
+        )
         return status
 
     def retry_startup(self):

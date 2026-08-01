@@ -26,11 +26,6 @@ def run():
     except server.ServerError as error:
         print(error)
         sys.exit(1)
-    # Said once the model is up rather than during the wait: it describes how
-    # the app will behave from here, not what it is doing right now.
-    notice = server.fit_notice()
-    if notice:
-        print(f"\n  {notice} Type 'model' to switch.")
     main()
 
 
@@ -56,6 +51,12 @@ def main():
     announced = False
 
     print("AI Shell — type what you want in plain English. Ctrl+C to quit.\n")
+
+    # Claimed through the session, so this and the after-a-slow-answer
+    # explanation can't both be printed: same sentence, same card.
+    startup_notice = session.claim_notice(server.fit_notice())
+    if startup_notice:
+        print(f"  {startup_notice} Type 'model' to switch.\n")
 
     while True:
         # Between prompts, not on a timer: an asynchronous line arriving while

@@ -26,7 +26,7 @@ import threading
 from openai import OpenAI
 
 from ai_shell import corrections, web
-from ai_shell import config, fit
+from ai_shell import config, fit, server
 from ai_shell.config import API_KEY, BASE_URL
 from ai_shell.executor import execute_command, list_apps, run_command
 from ai_shell.listing import listing_parent, resolve_listed_paths
@@ -222,6 +222,21 @@ class Session:
         data["notice"] = self._slow_notice(rate)
         return data
 
+    def claim_notice(self, text):
+        """`text` if nothing has explained the graphics card yet this session,
+        None if something already has.
+
+        One flag for every route to the same sentence. The startup check and
+        the slow-answer check are different code in different modules, and
+        without a shared claim each was "said once" on its own terms — which
+        the user experiences as being told twice, with two different numbers
+        in it.
+        """
+        if not text or self._slow_notice_shown:
+            return None
+        self._slow_notice_shown = True
+        return text
+
     def _slow_notice(self, rate):
         """Why that answer took so long, said once per session, or None.
 
@@ -230,6 +245,12 @@ class Session:
         alongside that one is that a game started since then changes the
         answer, and a stale number would describe the machine as it was before
         the thing that made it slow.
+
+        What our own model is holding is then subtracted from that reading.
+        By the time an answer has been slow the weights are resident, so most
+        of what the card reports as "in use" is this app — and reporting that
+        back as other programs hogging the card is both wrong and unactionable:
+        the user closes things, nothing improves, and the app says it again.
         """
         if self._slow_notice_shown or rate is None or rate >= fit.SLOW_TOKENS_PER_SEC:
             return None
@@ -241,13 +262,18 @@ class Session:
         model = config.current_model()
         if not model:
             return None
-        free = current.free_vram_gb()
-        kind = fit.verdict(model, total, free, config.HARDWARE.get("vram_shared", False))
+
+        others = server.others_vram_gb(current.free_vram_gb())
+        if others is None:
+            return None
+        # What the card would have free for us if nothing but those other
+        # programs were on it — the honest version of "is there room here".
+        free_of_others = total - others
+        kind = fit.verdict(model, total, free_of_others, config.HARDWARE.get("vram_shared", False))
         if not kind:
             # Slow for a reason we can't see. A guess is worse than silence.
             return None
-        self._slow_notice_shown = True
-        return fit.explain(kind, total, free)
+        return self.claim_notice(fit.explain(kind, total, free_of_others))
 
     def _grounded_options(self, user_input, data):
         """Swaps the model's generic app suggestions ("Google Chrome") for

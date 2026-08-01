@@ -164,22 +164,21 @@ turn. Route the easy ones cheaply and spend the big model only where it earns it
   sizing logic in `ai_shell/models.py`. Probably only worth it on machines above
   some threshold, which means the sizing code has to learn a new axis.
 
-### 1.6a Partial GPU offload ★★ · Effort M
+### 1.6a Tune the offload margin ★ · Effort S
 
-`config.GPU_LAYERS` is all-or-nothing: the whole model goes on the card or none
-of it does. When the card has room for two thirds of a model, two thirds is
-worth having — `-ngl N` takes a layer count, and the budget rule already exists
-in `ai_shell/fit.py`. What's missing is turning gigabytes into a layer count.
+`ai_shell/fit.gpu_layers` keeps a flat 1GB back from what the driver reports as
+free, because that is where the cliff was measured on one 8GB card. The margin
+is a constant standing in for a number that really varies by driver, card and
+compositor — on the reference machine it left 24 of 28 layers on the card where
+27 would have run, which is 32 tokens a second against 45.
 
-This is the better answer for the "squeezed" case the app currently only
-explains: a user with a game running would get a usable app rather than an
-accurate apology.
+Worth replacing with something measured: start, read how much actually became
+resident, and remember the answer per machine in `settings.json`.
 
-- **Touches:** `ai_shell/config.py`, `ai_shell/fit.py`, `ai_shell/server.py`
-- **Catch:** layer size depends on the model and the context window, and being
-  wrong high recreates the exact paging this whole feature exists to prevent.
-  It also has to be decided per *start*, not per install, since what's free
-  changes between launches.
+- **Touches:** `ai_shell/fit.py`, `ai_shell/server.py`, `ai_shell/config.py`
+- **Catch:** the reading has to be taken while nothing else is moving on the
+  card, and being wrong high recreates the paging the constant exists to avoid.
+  A remembered value also has to be thrown away when the hardware changes.
 
 ### 1.6b Streaming the reply ★★ · Effort M
 

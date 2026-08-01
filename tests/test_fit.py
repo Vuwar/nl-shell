@@ -57,6 +57,58 @@ class Verdict(unittest.TestCase):
         self.assertIsNone(fit.verdict(self.q6, None, None))
 
 
+class GpuLayers(unittest.TestCase):
+    """The measured curve this exists for, on an 8GB card with 5.8GB free:
+
+        0 layers 16.5 tok/s · 16 layers 26.4 · 24 layers 38.3 ·
+        27 layers 45.3 · 28 layers (all) 7.0
+
+    All-or-nothing had to pick either end of that. These tests pin the rule to
+    landing short of the cliff.
+    """
+
+    def setUp(self):
+        self.q4 = models.by_id("qwen2.5-coder-7b-q4")   # 4.7GB over 28 layers
+
+    def test_the_reported_machine_lands_below_the_cliff(self):
+        layers = fit.gpu_layers(self.q4, 5.8, 8192)
+        self.assertGreater(layers, 0)
+        self.assertLess(layers, self.q4.layers,
+                        "all 28 layers is the 7 tokens/sec case")
+        self.assertGreaterEqual(layers, 20, "well short of the cliff is still most of the win")
+
+    def test_a_roomy_card_gets_everything(self):
+        # -1 rather than a count: where it all fits, llama.cpp's own handling
+        # beats our approximation of layer sizes.
+        self.assertEqual(fit.gpu_layers(self.q4, 16.0, 8192), -1)
+
+    def test_a_card_with_nothing_free_gets_nothing(self):
+        self.assertEqual(fit.gpu_layers(self.q4, 1.0, 8192), 0)
+
+    def test_no_card_gets_nothing(self):
+        self.assertEqual(fit.gpu_layers(self.q4, None, 8192), 0)
+
+    def test_a_bigger_context_costs_layers(self):
+        roomy = fit.gpu_layers(self.q4, 5.8, 4096)
+        cramped = fit.gpu_layers(self.q4, 5.8, 32768)
+        self.assertGreater(roomy, cramped,
+                           "the key/value cache comes out of the same budget as the weights")
+
+    def test_a_handful_of_layers_is_not_worth_splitting_for(self):
+        # Just above the point where the budget buys one or two layers: the
+        # transfers cost more than the layers save.
+        layers = fit.gpu_layers(self.q4, 1.9, 8192)
+        self.assertEqual(layers, 0)
+
+    def test_shared_memory_keeps_no_safety_margin(self):
+        # There is no separate card to overrun, and no bus to cross when it
+        # fills — the reserve there is the operating system's business. The
+        # same 5.8GB that buys a partial split on a discrete card takes the
+        # whole model on unified memory.
+        self.assertEqual(fit.gpu_layers(self.q4, 5.8, 8192, shared=True), -1)
+        self.assertNotEqual(fit.gpu_layers(self.q4, 5.8, 8192), -1)
+
+
 class Explain(unittest.TestCase):
     def test_squeezed_names_what_the_other_programs_hold(self):
         text = fit.explain("squeezed", total_vram_gb=8.0, free_vram_gb=2.6)

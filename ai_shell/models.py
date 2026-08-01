@@ -45,11 +45,30 @@ class Model:
     ref: str           # llama-server -hf <ref>
     label: str         # for the settings screen
     weights_gb: float  # the GGUF's size on disk
+    # Transformer blocks, and what one token of context costs in key/value
+    # cache. Both are needed to answer "how much of this fits on the card",
+    # which is a question with a per-layer answer rather than a yes or no —
+    # see ai_shell.fit.gpu_layers.
+    #
+    # From each model's config: kv = 2 (K and V) x 2 bytes (f16) x n_kv_heads
+    # x head_dim x layers. Qwen2.5 uses a 128-wide head throughout, with 2 kv
+    # heads below 7B and 4 or 8 above.
+    layers: int = 28
+    kv_bytes_per_token: int = 57344
 
     @property
     def footprint_gb(self):
         """What this model occupies once loaded and serving."""
         return self.weights_gb * _OVERHEAD
+
+    @property
+    def layer_gb(self):
+        """Roughly what one transformer block weighs.
+
+        The blocks are not quite uniform and the output tensor is not a block
+        at all, which is why fit.gpu_layers keeps a margin rather than
+        treating this as exact."""
+        return self.weights_gb / self.layers
 
 
 def usable_ram_gb(ram_gb):
@@ -62,12 +81,18 @@ MODELS = (
     # 1.5B is the floor, not a recommendation: it holds the JSON shape but
     # drops rules from the prompt, so vague requests get guessed at instead of
     # asked about. Offered because a wrong answer beats an app that won't run.
-    Model("qwen2.5-coder-1.5b-q4", "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF:Q4_K_M", "1.5B — minimum", 1.1),
-    Model("qwen2.5-coder-3b-q4", "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF:Q4_K_M", "3B — light", 2.0),
-    Model("qwen2.5-coder-7b-q4", "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M", "7B — balanced", 4.7),
-    Model("qwen2.5-coder-7b-q6", "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q6_K", "7B — higher quality", 6.3),
-    Model("qwen2.5-coder-14b-q4", "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M", "14B — strong", 9.0),
-    Model("qwen2.5-coder-32b-q4", "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF:Q4_K_M", "32B — best", 19.9),
+    Model("qwen2.5-coder-1.5b-q4", "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF:Q4_K_M", "1.5B — minimum", 1.1,
+          layers=28, kv_bytes_per_token=28672),
+    Model("qwen2.5-coder-3b-q4", "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF:Q4_K_M", "3B — light", 2.0,
+          layers=36, kv_bytes_per_token=36864),
+    Model("qwen2.5-coder-7b-q4", "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M", "7B — balanced", 4.7,
+          layers=28, kv_bytes_per_token=57344),
+    Model("qwen2.5-coder-7b-q6", "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q6_K", "7B — higher quality", 6.3,
+          layers=28, kv_bytes_per_token=57344),
+    Model("qwen2.5-coder-14b-q4", "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M", "14B — strong", 9.0,
+          layers=48, kv_bytes_per_token=196608),
+    Model("qwen2.5-coder-32b-q4", "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF:Q4_K_M", "32B — best", 19.9,
+          layers=64, kv_bytes_per_token=262144),
 )
 
 _BY_ID = {model.id: model for model in MODELS}

@@ -10,6 +10,26 @@ from ai_shell import config, server
 
 
 class Argv(unittest.TestCase):
+    def test_the_layer_count_is_decided_per_start(self):
+        # What else is on the card changes between launches, so this is not a
+        # setting worked out once at install time.
+        argv = server._argv("/bin/llama-server", "/models/model.gguf", 24)
+        self.assertEqual(argv[argv.index("-ngl") + 1], "24")
+
+    def test_without_a_free_reading_it_falls_back_to_the_configured_answer(self):
+        from unittest import mock
+
+        with mock.patch.object(server, "_free_vram_at_start", None):
+            self.assertEqual(server._gpu_layers(), config.GPU_LAYERS)
+
+    def test_one_slot_not_four(self):
+        # Left to itself this build opens four slots and gives each the full
+        # context, so -c 8192 becomes four caches of 8192 — about 1.8GB of a
+        # 7B's graphics memory held for three conversations nobody is having,
+        # taken out of the budget the weights need.
+        argv = server._argv("/bin/llama-server", "/models/model.gguf")
+        self.assertEqual(argv[argv.index("-np") + 1], "1")
+
     def test_the_model_is_a_path_not_a_repo_reference(self):
         argv = server._argv("/bin/llama-server", "/models/model-q6_k.gguf")
         self.assertIn("-m", argv)

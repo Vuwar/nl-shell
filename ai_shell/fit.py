@@ -31,6 +31,22 @@ SLOW_TOKENS_PER_SEC = 5.0
 # most of its life in the round-trip, not the model.
 MIN_TIMED_TOKENS = 20
 
+# The gap between what a driver says is free and what it will actually let one
+# process keep resident. Measured, not guessed: on an 8GB card reporting 5.8GB
+# free, a 7B-Q4 held 27 of its 28 layers at 45 tokens a second and collapsed to
+# 7 on the 28th — the step that also moves the output tensor. Everything below
+# that line was fast; the line sits about a gigabyte under what free memory
+# claimed.
+VRAM_SAFETY_GB = 1.0
+
+# Scratch space for the graph itself, over and above weights and cache.
+COMPUTE_GB = 0.3
+
+# Below this there is no point splitting: the transfers cost more than the few
+# layers save, and whole-model-on-CPU is both faster and simpler to reason
+# about.
+MIN_WORTHWHILE_LAYERS = 4
+
 
 def usable_vram_gb(total_gb, shared=False):
     """Of `total_gb` on the card, what a model may occupy.
@@ -45,6 +61,50 @@ def usable_vram_gb(total_gb, shared=False):
     if shared:
         return total_gb
     return total_gb - max(VRAM_RESERVE_FLOOR_GB, total_gb * VRAM_RESERVE_FRACTION)
+
+
+def gpu_layers(model, free_vram_gb, context_size, shared=False):
+    """How many of `model`'s layers to put on the card: -1 for all, 0 for none.
+
+    All-or-nothing was the wrong shape for this decision, and measurably so.
+    On an 8GB card with 5.8GB free, one 7B-Q4 ran at:
+
+        0 layers (all CPU)     16.5 tokens/sec
+        16 layers              26.4
+        24 layers              38.3
+        27 layers              45.3
+        28 layers (all)         7.0
+
+    Everything up to the last layer got faster; the last one fell off a cliff,
+    because it tips the total past what the driver will keep resident and the
+    weights start crossing the bus once per token. So the old rule — all of it
+    if it fits, none of it otherwise — was picking either the best answer or
+    the worst one, with the difference decided by a margin of a few hundred
+    megabytes it wasn't measuring.
+
+    Filling the card to a measured margin gets most of the win and cannot pick
+    the cliff. Returning -1 rather than the exact layer count when everything
+    fits keeps llama.cpp's own handling of models whose layer sizes we've
+    approximated badly.
+
+    `free_vram_gb` is what the card has free *before* this app loads anything,
+    so it already accounts for whatever else the user is running.
+    """
+    if not free_vram_gb or not model.layers:
+        return 0
+
+    kv_gb = model.kv_bytes_per_token * context_size / (1024 ** 3)
+    # Unified memory has no separate card to run out of, and no bus to cross
+    # when it does; the safety margin there is the OS's business, not ours.
+    safety = 0.0 if shared else VRAM_SAFETY_GB
+    budget = free_vram_gb - safety - kv_gb - COMPUTE_GB
+    if budget <= 0:
+        return 0
+
+    layers = int(budget / model.layer_gb)
+    if layers >= model.layers:
+        return -1
+    return layers if layers >= MIN_WORTHWHILE_LAYERS else 0
 
 
 def verdict(model, total_vram_gb, free_vram_gb=None, shared=False):
