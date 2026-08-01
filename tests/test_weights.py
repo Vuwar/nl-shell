@@ -7,10 +7,14 @@ that are subtly wrong rather than absent. Both are cheap to test and
 expensive to discover.
 """
 
+import hashlib
+import os
+import tempfile
 import unittest
 from unittest import mock
 
 from ai_shell import fetch, weights
+from tests.stubs import StubHTTP
 
 # Real payload, trimmed to the Q6_K and Q4_K_M entries. The repository
 # publishes BOTH packagings of the same weights, which is the case an
@@ -133,6 +137,113 @@ class Resolve(unittest.TestCase):
             with self.assertRaises(weights.WeightsError) as caught:
                 weights.resolve(REF)
         self.assertIn(REPO, str(caught.exception))
+
+
+PAYLOAD = bytes(range(256)) * 400  # 102,400 bytes
+DIGEST = hashlib.sha256(PAYLOAD).hexdigest()
+
+
+def one_file(size=len(PAYLOAD), sha256=DIGEST):
+    """An API listing with a single unsplit file of our test payload."""
+    return [{"rfilename": "model-q6_k.gguf", "size": size,
+             "lfs": {"sha256": sha256, "size": size}}]
+
+
+class Ensure(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        patch = mock.patch.object(weights.config, "MODEL_DIR", self.dir.name)
+        patch.start()
+        self.addCleanup(patch.stop)
+        # Nothing here should ever wait; the backoff is asserted on directly.
+        sleep = mock.patch.object(weights.time, "sleep")
+        self.slept = sleep.start()
+        self.addCleanup(sleep.stop)
+
+    def path(self, name="model-q6_k.gguf"):
+        return os.path.join(self.dir.name, name)
+
+    def run_ensure(self, http, listing=None):
+        with mock.patch.object(weights.fetch, "json_document", api(listing or one_file())):
+            with mock.patch("urllib.request.urlopen", http):
+                return weights.ensure(REF, "7B — test", say)
+
+    def test_it_downloads_verifies_and_returns_the_path(self):
+        http = StubHTTP(PAYLOAD)
+        result = self.run_ensure(http)
+        self.assertEqual(result, self.path())
+        with open(result, "rb") as handle:
+            self.assertEqual(handle.read(), PAYLOAD)
+        self.assertFalse(os.path.exists(self.path() + ".partial"))
+
+    def test_a_file_already_there_is_not_fetched_again(self):
+        with open(self.path(), "wb") as handle:
+            handle.write(PAYLOAD)
+        http = StubHTTP(PAYLOAD)
+        self.run_ensure(http)
+        self.assertEqual(http.requests, [])
+
+    def test_a_dropped_connection_backs_off_resumes_and_succeeds(self):
+        http = StubHTTP(PAYLOAD, fail_after=40000, failures=2)
+        result = self.run_ensure(http)
+        with open(result, "rb") as handle:
+            self.assertEqual(handle.read(), PAYLOAD)
+        self.assertEqual(len(http.requests), 3)
+        # Second and third attempts continue rather than start over.
+        self.assertIsNone(http.requests[0].headers.get("Range"))
+        self.assertEqual(http.requests[1].headers.get("Range"), "bytes=40000-")
+        self.assertEqual([c.args[0] for c in self.slept.call_args_list],
+                         list(weights.BACKOFF[:2]))
+
+    def test_running_out_of_attempts_says_what_was_kept(self):
+        # A connection that dies before delivering anything new, every time —
+        # so the attempts are genuinely exhausted rather than inching to the
+        # end. What arrived earlier has to survive that.
+        with open(self.path() + ".partial", "wb") as handle:
+            handle.write(PAYLOAD[:40000])
+        http = StubHTTP(PAYLOAD, fail_after=0, failures=99)
+        with self.assertRaises(weights.WeightsError) as caught:
+            self.run_ensure(http)
+        message = str(caught.exception)
+        self.assertIn(self.dir.name, message)
+        self.assertIn("again", message)
+        self.assertEqual(len(http.requests), weights.ATTEMPTS)
+        self.assertEqual(os.path.getsize(self.path() + ".partial"), 40000)
+
+    def test_a_404_is_not_retried(self):
+        http = StubHTTP(PAYLOAD, status=404)
+        with self.assertRaises(weights.WeightsError):
+            self.run_ensure(http)
+        self.assertEqual(len(http.requests), 1)
+        self.assertEqual(self.slept.call_count, 0)
+
+    def test_a_bad_checksum_is_re_fetched_once_and_then_refused(self):
+        http = StubHTTP(PAYLOAD)
+        with self.assertRaises(weights.WeightsError) as caught:
+            self.run_ensure(http, one_file(sha256="0" * 64))
+        self.assertIn("checksum", str(caught.exception))
+        self.assertEqual(len(http.requests), 2)     # one clean retry, no more
+        self.assertFalse(os.path.exists(self.path() + ".partial"))
+        self.assertFalse(os.path.exists(self.path()))
+
+    def test_too_little_free_space_fails_before_any_request(self):
+        http = StubHTTP(PAYLOAD)
+        usage = mock.Mock(return_value=mock.Mock(free=1000))
+        with mock.patch.object(weights.shutil, "disk_usage", usage):
+            with self.assertRaises(weights.WeightsError) as caught:
+                self.run_ensure(http)
+        self.assertIn("free", str(caught.exception))
+        self.assertEqual(http.requests, [])
+
+    def test_progress_names_the_model_and_reaches_a_hundred(self):
+        lines = []
+        http = StubHTTP(PAYLOAD)
+        with mock.patch.object(weights.fetch, "json_document", api(one_file())):
+            with mock.patch("urllib.request.urlopen", http):
+                weights.ensure(REF, "7B — test", lines.append)
+        self.assertTrue(any("7B — test" in line for line in lines))
+        self.assertTrue(any("100%" in line for line in lines))
 
 
 if __name__ == "__main__":

@@ -105,6 +105,18 @@ MODEL = os.environ.get("AI_SHELL_MODEL") or _MODEL.id
 MODEL_REF = os.environ.get("AI_SHELL_MODEL_REF") or _MODEL.ref
 MODEL_LABEL = _MODEL.label
 
+# Where the weights are kept. Ours, beside the llama.cpp install runtime.py
+# puts in the same folder, so uninstalling stays "delete a folder". Not
+# llama.cpp's own cache: sharing one copy with a hand-run llama-server would
+# mean reproducing its undocumented file naming exactly, and being wrong about
+# it means silently downloading a second copy of several gigabytes. The
+# override is for a machine whose system drive is the wrong place for 20GB.
+MODEL_DIR = (
+    os.environ.get("AI_SHELL_MODEL_DIR")
+    or _SETTINGS.get("model_dir")
+    or os.path.join(CONFIG_DIR, "models")
+)
+
 # --- the server -----------------------------------------------------------
 HOST = os.environ.get("AI_SHELL_HOST") or "127.0.0.1"
 PORT = int(os.environ.get("AI_SHELL_PORT") or _SETTINGS.get("port") or DEFAULT_PORT)
