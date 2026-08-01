@@ -306,6 +306,88 @@ function useRotatingHint(paused) {
 // two from fighting over the same gesture.
 const keepGesture = (e) => e.stopPropagation();
 
+// The confirmation for a risky command: what it is, and a chance to fix it.
+// Its own component because the edit box holds state, and the entry list that
+// renders it is otherwise stateless.
+function ConfirmRow({ command, onDecide }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(command);
+  const areaRef = useRef(null);
+
+  useEffect(() => {
+    if (editing && areaRef.current) {
+      areaRef.current.focus();
+      const end = areaRef.current.value.length;
+      areaRef.current.setSelectionRange(end, end);
+    }
+  }, [editing]);
+
+  function submitEdit() {
+    const text = draft.trim();
+    // An empty edit cancels rather than running an empty command — the same
+    // rule the console REPL follows.
+    onDecide(text ? { proceed: true, command: text } : { proceed: false, command: null });
+  }
+
+  function onKeyDown(e) {
+    // Shift+Enter inserts a newline: a "command" may be a short script.
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submitEdit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onDecide({ proceed: false, command: null });
+    }
+  }
+
+  return (
+    <div className="entry confirm-block">
+      {editing ? (
+        <textarea
+          ref={areaRef}
+          className="confirm-edit"
+          value={draft}
+          spellCheck={false}
+          rows={Math.min(6, draft.split("\n").length)}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKeyDown}
+          onMouseDown={keepGesture}
+        />
+      ) : (
+        <pre className="confirm-command" onMouseDown={keepGesture}>
+          {command}
+        </pre>
+      )}
+      <div className="confirm-row">
+        <span>Run this? It can't easily be undone.</span>
+        {editing ? (
+          <button className="btn run" onClick={submitEdit}>
+            Run it
+          </button>
+        ) : (
+          <>
+            <button
+              className="btn run"
+              onClick={() => onDecide({ proceed: true, command: null })}
+            >
+              Run it
+            </button>
+            <button className="btn" onClick={() => setEditing(true)}>
+              Edit
+            </button>
+          </>
+        )}
+        <button
+          className="btn cancel"
+          onClick={() => onDecide({ proceed: false, command: null })}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 async function writeClipboard(text) {
   // Focus moves to the scratch textarea in the fallback path; the input has to
   // get it back or the next keystroke goes nowhere.
@@ -702,15 +784,10 @@ function Entry({ entry, onConfirm, onChoose, busy }) {
       );
     case "confirm":
       return (
-        <div className="entry confirm-row">
-          <span>Run this? It can't easily be undone.</span>
-          <button className="btn run" onClick={() => onConfirm(entry.id, true)}>
-            Run it
-          </button>
-          <button className="btn cancel" onClick={() => onConfirm(entry.id, false)}>
-            Cancel
-          </button>
-        </div>
+        <ConfirmRow
+          command={entry.command}
+          onDecide={(decision) => onConfirm(entry.id, decision)}
+        />
       );
     case "skipped":
       return <div className="entry system-line">Skipped.</div>;
@@ -1094,18 +1171,18 @@ export default function App() {
     return entry.id;
   }
 
-  function askConfirmation() {
+  function askConfirmation(command) {
     return new Promise((resolve) => {
-      const id = addEntry({ kind: "confirm" });
+      const id = addEntry({ kind: "confirm", command });
       confirmResolvers.current[id] = resolve;
     });
   }
 
-  function onConfirmClick(id, proceed) {
+  function onConfirmClick(id, decision) {
     setEntries((prev) => prev.filter((e) => e.id !== id));
     const resolve = confirmResolvers.current[id];
     delete confirmResolvers.current[id];
-    if (resolve) resolve(proceed);
+    if (resolve) resolve(decision);
   }
 
   function onChooseOption(id, option) {
@@ -1223,19 +1300,23 @@ export default function App() {
 
       addEntry({ kind: "explanation", text: data.explanation });
 
+      // None means run what the model wrote; a string is the user's own
+      // version, which the session records as a correction.
+      let edited = null;
       if (data.risk === "risky") {
-        const proceed = await askConfirmation();
-        if (!proceed) {
+        const decision = await askConfirmation(data.command);
+        if (!decision.proceed) {
           addEntry({ kind: "skipped" });
           setStatus("ok");
           return;
         }
+        edited = decision.command;
       }
 
       // Keep the dots up while the command (and, on failure, the model's
       // explanation of why) runs — both can take a few seconds.
       const runningId = addEntry({ kind: "thinking" });
-      const result = await window.pywebview.api.confirm();
+      const result = await window.pywebview.api.confirm(edited);
       setEntries((prev) => prev.filter((e) => e.id !== runningId));
 
       if (result && result.ok) {

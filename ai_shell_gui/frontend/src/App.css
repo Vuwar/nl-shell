@@ -921,6 +921,47 @@
   flex: 1;
 }
 
+/* The command sits directly above the confirmation and shares its outline, so
+   the two read as one block: what is about to happen, and the decision. */
+.confirm-block {
+  margin-top: 8px;
+}
+
+.confirm-block .confirm-row {
+  margin-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.confirm-command,
+.confirm-edit {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+  margin: 0;
+  padding: 10px 12px;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.confirm-edit {
+  display: block;
+  width: 100%;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.confirm-edit:focus {
+  border-color: rgba(255, 107, 107, 0.45);
+}
+
 .btn {
   font-family: var(--ui);
   font-size: 12.5px;

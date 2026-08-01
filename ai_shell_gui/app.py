@@ -202,9 +202,14 @@ class Api:
             "options": [o.strip() for o in options if isinstance(o, str) and o.strip()][:4],
         }
 
-    def confirm(self):
-        """Runs the pending command; returns {"ok", "output"} or {"ok", "reason"}."""
-        return self.session.run_last()
+    def confirm(self, command=None):
+        """Runs the pending command; returns {"ok", "output"} or {"ok", "reason"}.
+
+        `command` is the user's edit of what was shown, or None to run the
+        model's version. An edit is not re-classified for risk — it only
+        reached an edit box by having been called risky.
+        """
+        return self.session.run_last(command)
 
     def clear(self):
         """Wipes the conversation behind a cleared screen — /clear and Esc.
