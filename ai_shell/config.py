@@ -79,7 +79,7 @@ def _resolve():
     # Either a first run, or a model id that no longer exists because the
     # registry changed under a settings file written by an older build.
     probed = hardware.probe()
-    model = models.recommend(probed["ram_gb"], probed["vram_gb"])
+    model = models.recommend(probed["ram_gb"], probed["vram_gb"], probed.get("vram_shared", False))
     settings["model"] = model.id
     settings["hardware"] = probed
     _write_settings(settings)
