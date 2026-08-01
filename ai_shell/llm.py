@@ -8,10 +8,11 @@ so the same rules produce PowerShell on Windows and bash elsewhere.
 
 import json
 import re
+import time
 
 from openai import APIStatusError
 
-from ai_shell import config
+from ai_shell import config, fit
 from ai_shell.platforms import current
 
 _RULES = f"""You are a command translator for a {current.OS_NAME} AI shell.
@@ -632,10 +633,24 @@ def _fallback_reason(error_text):
 
 
 def ask_model(client, user_input, history):
+    """(data, rate) — the model's answer, and how fast it wrote it.
+
+    The rate is tokens a second, measured here rather than read out of
+    llama.cpp's log: a user who pointed AI_SHELL_BASE_URL at Ollama or at their
+    own server has no log of ours to read, and llama.cpp's format is its own
+    business and has changed. None whenever it can't be measured honestly — a
+    backend that reports no usage, or a reply too short to time.
+
+    Only this call is measured. The app's other model calls happen while the
+    user is reading something; this is the one they sit and wait for.
+    """
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [{"role": "user", "content": user_input}]
+    started = time.monotonic()
     response = _complete(
         client, messages, max_tokens=500, schema=RESPONSE_SCHEMA, schema_name="shell_command"
     )
+    elapsed = time.monotonic() - started
+    rate = _rate(response, elapsed)
     text = response.choices[0].message.content.strip()
     # Fences and salvage parsing are dead weight against a server that applied
     # the schema, and the only thing standing up an answer from one that
@@ -647,10 +662,24 @@ def ask_model(client, user_input, history):
             "command": None,
             "risk": None,
             "explanation": "Sorry — I got a garbled answer from the model. Try asking again, maybe with different wording.",
-        }
+        }, rate
     if isinstance(data.get("command"), str):
         data["command"] = _restore_path_escapes(data["command"])
-    return data
+    return data, rate
+
+
+def _rate(response, elapsed):
+    """Tokens a second, or None when there's nothing honest to report.
+
+    A short reply is dominated by the round-trip rather than the model, and a
+    backend that reports no usage gives nothing to divide — both are reasons
+    to say nothing rather than to publish a number that means something else.
+    """
+    usage = getattr(response, "usage", None)
+    tokens = getattr(usage, "completion_tokens", None) if usage else None
+    if not tokens or tokens < fit.MIN_TIMED_TOKENS or elapsed <= 0:
+        return None
+    return tokens / elapsed
 
 
 # Control characters a swallowed backslash turns into, and the text they were
