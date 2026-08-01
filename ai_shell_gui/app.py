@@ -1,6 +1,7 @@
 """pywebview desktop window: same Session core as the CLI, a floating React panel instead of a console."""
 
 import os
+import socket
 import sys
 import threading
 
@@ -282,6 +283,30 @@ class Api:
             threading.Timer(0.05, self._window.destroy).start()
 
 
+def _free_port():
+    """A port nothing is listening on, for pywebview's own file server.
+
+    The built front end isn't loaded from disk — pywebview serves it over
+    HTTP and points the window at localhost. Which port that is matters more
+    than it sounds: with private_mode off, pywebview stops choosing a free
+    one and uses a single fixed port (42001) shared by every application on
+    the machine. Private mode has to stay off, because it wipes localStorage
+    on every run and the settings screen keeps its choices there.
+
+    So two copies of this app — an installed one and a checkout, or two
+    checkouts — are handed the same port. The second one's server fails to
+    bind, silently, on a daemon thread nobody is watching, and the window is
+    still pointed at the address. It then renders the *other* copy's front
+    end with this copy's Python behind it: a new backend answering through an
+    old UI, which produces symptoms that look like impossible bugs. Asking
+    the OS for a free port and naming it explicitly is what keeps the two
+    apart.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
 def main():
     # Checked before anything else, because the alternative is a window that
     # opens on nothing and gives no hint why. Two ways to get here: a checkout
@@ -333,8 +358,9 @@ def main():
     api._window = window
     window.events.shown += lambda: _apply_window_chrome(window)
     # private_mode defaults to True, which wipes localStorage on every run —
-    # the settings screen persists its choices there.
-    webview.start(private_mode=False)
+    # the settings screen persists its choices there. Turning it off is also
+    # what makes the port explicit rather than optional; see _free_port.
+    webview.start(private_mode=False, http_port=_free_port())
 
 
 # SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER

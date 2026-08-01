@@ -6,6 +6,7 @@ without closing the window, and that a request typed during a retry waits for
 that retry rather than being answered against a server that isn't listening.
 """
 
+import socket
 import threading
 import unittest
 from unittest import mock
@@ -106,6 +107,38 @@ class Startup(unittest.TestCase):
 
         self.assertEqual(answers[0]["command"], "echo hi")
         self.assertEqual(states, ["ready"])
+
+
+@unittest.skipIf(gui is None, "pywebview isn't installed")
+class FrontEndPort(unittest.TestCase):
+    """Which port the built front end is served on.
+
+    pywebview serves it over HTTP, and with private_mode off — which this app
+    needs, because the settings screen keeps its choices in localStorage — it
+    falls back to one fixed port for every application on the machine. Two
+    copies of this app then share it, and the second one's window quietly
+    renders the first one's front end.
+    """
+
+    def test_the_chosen_port_is_actually_free(self):
+        port = gui._free_port()
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", port))  # must not raise
+
+    def test_the_window_is_not_left_on_pywebviews_shared_default(self):
+        started = {}
+        with mock.patch.object(gui.webview, "create_window"), \
+             mock.patch.object(gui.webview, "start", lambda **kw: started.update(kw)), \
+             mock.patch.object(gui.webview, "screens", [mock.Mock(width=1920, height=1080)]), \
+             mock.patch.object(gui, "Api"):
+            gui.main()
+
+        self.assertIn("http_port", started)
+        self.assertNotEqual(started["http_port"], 42001)
+        # The reason the default applies at all, so this test fails loudly if
+        # somebody "fixes" the collision by turning private mode back on and
+        # silently wiping the settings screen's storage instead.
+        self.assertIs(started["private_mode"], False)
 
 
 if __name__ == "__main__":
