@@ -68,6 +68,18 @@ class Platform:
         when the model isn't available to explain a failure in plain words."""
         return line
 
+    def prefill_input(self, prompt, text):
+        """Ask for a line of input with `text` already in the buffer, so the
+        user edits it instead of retyping it. The line as they left it, or
+        None where this platform can't do it.
+
+        None and "" are different answers and the caller relies on it: None is
+        "no console editing here, fall back to a type-over prompt", while "" is
+        a user who cleared the line, which cancels. Returning "" for both would
+        turn an unsupported platform into a silent cancellation.
+        """
+        return None
+
     def echoes_created_item(self, command, output):
         """True when the output is nothing but the thing the command just
         created, dumped in the shell's object-table format. The explanation

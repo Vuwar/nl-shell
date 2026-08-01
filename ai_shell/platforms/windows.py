@@ -123,6 +123,37 @@ class _MemoryStatusEx(ctypes.Structure):
     ]
 
 
+# Console input records, for prefilling a line the user can then edit with the
+# console's own editor (see Windows.prefill_input). Windows has no readline,
+# and writing one is a great deal more code than handing the terminal the
+# keystrokes and letting it do what it already does.
+_STD_INPUT_HANDLE = -10
+_KEY_EVENT = 0x0001
+
+
+class _CharUnion(ctypes.Union):
+    _fields_ = [("UnicodeChar", ctypes.c_wchar), ("AsciiChar", ctypes.c_char)]
+
+
+class _KeyEventRecord(ctypes.Structure):
+    _fields_ = [
+        ("bKeyDown", ctypes.c_int),
+        ("wRepeatCount", ctypes.c_ushort),
+        ("wVirtualKeyCode", ctypes.c_ushort),
+        ("wVirtualScanCode", ctypes.c_ushort),
+        ("uChar", _CharUnion),
+        ("dwControlKeyState", ctypes.c_uint),
+    ]
+
+
+class _EventUnion(ctypes.Union):
+    _fields_ = [("KeyEvent", _KeyEventRecord)]
+
+
+class _InputRecord(ctypes.Structure):
+    _fields_ = [("EventType", ctypes.c_ushort), ("Event", _EventUnion)]
+
+
 class Windows(Platform):
     OS_NAME = "Windows"
     SHELL_NAME = "PowerShell"
@@ -236,6 +267,53 @@ wrong guess fails instead of opening something else."""
         # drop that prefix so the user sees only the OS's actual reason.
         _, sep, rest = line.partition(" : ")
         return rest if sep else line
+
+    def prefill_input(self, prompt, text):
+        """The command typed into the console's input buffer before the user
+        gets there, so `input()` comes up with it already on the line and the
+        console's own editor handles arrows and backspace.
+
+        None whenever there is no real console to write into — a redirected
+        stdin, which is what a test run, a pipe and CI all have. The caller
+        then prints a type-over prompt instead.
+        """
+        if not text:
+            return None
+        try:
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.GetStdHandle(_STD_INPUT_HANDLE)
+            if handle in (0, -1):
+                return None
+            # GetConsoleMode fails on anything that isn't a console, which is
+            # exactly the case where the injection below would go nowhere.
+            mode = ctypes.c_uint()
+            if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                return None
+
+            records = (_InputRecord * (len(text) * 2))()
+            for index, char in enumerate(text):
+                for offset, down in ((0, 1), (1, 0)):
+                    record = records[index * 2 + offset]
+                    record.EventType = _KEY_EVENT
+                    record.Event.KeyEvent.bKeyDown = down
+                    record.Event.KeyEvent.wRepeatCount = 1
+                    record.Event.KeyEvent.wVirtualKeyCode = 0
+                    record.Event.KeyEvent.wVirtualScanCode = 0
+                    record.Event.KeyEvent.uChar.UnicodeChar = char
+                    record.Event.KeyEvent.dwControlKeyState = 0
+            written = ctypes.c_uint()
+            if not kernel32.WriteConsoleInputW(
+                handle, records, len(records), ctypes.byref(written)
+            ):
+                return None
+        except (OSError, AttributeError, ValueError):
+            return None
+
+        try:
+            return input(prompt)
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return ""
 
     def echoes_created_item(self, command, output):
         """Making a folder shouldn't answer with an attribute-flag table. Both
