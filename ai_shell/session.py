@@ -25,7 +25,7 @@ import threading
 
 from openai import OpenAI
 
-from ai_shell import web
+from ai_shell import corrections, web
 from ai_shell.config import API_KEY, BASE_URL, SUMMARY_CAVEAT
 from ai_shell.executor import execute_command, list_apps, run_command
 from ai_shell.listing import listing_parent, resolve_listed_paths
@@ -229,7 +229,7 @@ class Session:
             return None
         return pick_installed_apps(self.client, user_input, data.get("explanation", ""), names)
 
-    def run_last(self):
+    def run_last(self, command=None):
         """Executes the command from the most recent translate() call (with
         the app-launch fallback baked in) and boils it down to what the
         user should see: {"ok": True, "output": str} on success — or
@@ -242,14 +242,27 @@ class Session:
         A pending web lookup is carried out here too, and comes back in its own
         shape — {"ok": True, "answer": str|None, "results": [...], "caveat":
         str|None}. Same entry point because it's the same moment in the flow:
-        the model has said what to do and the interface has agreed to it."""
+        the model has said what to do and the interface has agreed to it.
+
+        `command` is the user's own edit of what the model produced, from the
+        confirmation step. None means run the model's version unchanged, which
+        is every caller that predates editing. An edit is never re-classified
+        for risk: it only reached an edit box by having been called risky, and
+        an edit must not be able to talk its way down from that."""
         if not self._pending:
             return None
         if "search" in self._pending:
             query, hint = self._pending["search"], self._pending["hint"]
             self._pending = None
             return self._run_search(query, hint)
-        command, hint = self._pending["command"], self._pending["hint"]
+        suggested, hint = self._pending["command"], self._pending["hint"]
+        if command is None:
+            command = suggested
+        elif command != suggested:
+            # Recorded before resolve_listed_paths touches it: the model's
+            # command goes through that helper too, so storing the raw text on
+            # both sides is what makes the pair comparable.
+            corrections.record(hint, suggested, command)
         command = resolve_listed_paths(command, self._last_listing)
         apps = self._scan_apps() or None
 
