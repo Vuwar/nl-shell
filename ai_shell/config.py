@@ -293,11 +293,28 @@ def remember_weights(model_id, path):
 
 
 def installed_models():
-    """Ids whose weights are on this disk right now. The recorded path is
-    checked rather than trusted: weights are large, and the folder is the first
-    place somebody goes when a drive fills up."""
-    recorded = (_SETTINGS.get("weights") or {}).items()
-    return {model_id for model_id, path in recorded if path and os.path.exists(path)}
+    """Ids whose weights are on this disk right now.
+
+    Two sources, in order of how much they can be trusted. What a finished
+    download recorded is exact, and it is still checked rather than believed:
+    weights are large, and that folder is the first place somebody goes when a
+    drive fills up. Failing that, the folder is read and file names are matched
+    against each model's reference — which is how weights fetched by a build
+    that kept no record are found, rather than being reported as a download the
+    user has already done.
+
+    Imported here rather than at the top: ai_shell.weights imports this module,
+    and asking for it at import time would close the circle.
+    """
+    from ai_shell import weights
+
+    recorded = _SETTINGS.get("weights") or {}
+    found = set()
+    for model in models.MODELS:
+        path = recorded.get(model.id)
+        if (path and os.path.exists(path)) or weights.present(model.ref):
+            found.add(model.id)
+    return found
 
 
 def remember_runtime(tag):

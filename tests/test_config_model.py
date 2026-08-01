@@ -77,8 +77,58 @@ class InstalledWeights(unittest.TestCase):
                 self.assertIn("qwen2.5-coder-3b-q4", config.installed_models())
 
     def test_a_recorded_file_that_was_deleted_does_not(self):
-        with mock.patch.object(config, "_SETTINGS", {"weights": {"qwen2.5-coder-3b-q4": "/gone.gguf"}}):
+        # An empty folder, not the real one: without it this asserts against
+        # whatever the machine running the tests happens to have downloaded.
+        with tempfile.TemporaryDirectory() as folder, \
+             mock.patch.object(config, "_SETTINGS", {"weights": {"qwen2.5-coder-3b-q4": "/gone.gguf"}}), \
+             mock.patch.object(config, "MODEL_DIR", folder):
             self.assertEqual(config.installed_models(), set())
+
+    def test_weights_downloaded_by_an_older_build_are_found_on_disk(self):
+        # Nothing recorded — the build that fetched these kept no note. The
+        # file is right there, and saying "6.3GB download" next to it is a
+        # lie the user has to take on trust.
+        with tempfile.TemporaryDirectory() as folder:
+            self._touch(folder, "qwen2.5-coder-7b-instruct-q6_k.gguf")
+            with mock.patch.object(config, "_SETTINGS", {}), \
+                 mock.patch.object(config, "MODEL_DIR", folder):
+                self.assertIn("qwen2.5-coder-7b-q6", config.installed_models())
+
+    def test_a_sharded_download_is_found_too(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self._touch(folder, "qwen2.5-coder-7b-instruct-q6_k-00001-of-00002.gguf")
+            self._touch(folder, "qwen2.5-coder-7b-instruct-q6_k-00002-of-00002.gguf")
+            with mock.patch.object(config, "_SETTINGS", {}), \
+                 mock.patch.object(config, "MODEL_DIR", folder):
+                self.assertIn("qwen2.5-coder-7b-q6", config.installed_models())
+
+    def test_one_quantisation_is_not_mistaken_for_another(self):
+        # q4_k is a prefix of q4_k_m, and a contains-check would report the
+        # 7B-Q4 as installed on the strength of a file that isn't it.
+        with tempfile.TemporaryDirectory() as folder:
+            self._touch(folder, "qwen2.5-coder-7b-instruct-q6_k.gguf")
+            with mock.patch.object(config, "_SETTINGS", {}), \
+                 mock.patch.object(config, "MODEL_DIR", folder):
+                found = config.installed_models()
+        self.assertIn("qwen2.5-coder-7b-q6", found)
+        self.assertNotIn("qwen2.5-coder-7b-q4", found)
+
+    def test_another_models_file_is_not_counted(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self._touch(folder, "qwen2.5-coder-3b-instruct-q4_k_m.gguf")
+            with mock.patch.object(config, "_SETTINGS", {}), \
+                 mock.patch.object(config, "MODEL_DIR", folder):
+                found = config.installed_models()
+        self.assertEqual(found, {"qwen2.5-coder-3b-q4"})
+
+    def test_a_missing_model_folder_is_not_an_error(self):
+        with mock.patch.object(config, "_SETTINGS", {}), \
+             mock.patch.object(config, "MODEL_DIR", "/nowhere-at-all"):
+            self.assertEqual(config.installed_models(), set())
+
+    def _touch(self, folder, name):
+        with open(os.path.join(folder, name), "w", encoding="utf-8") as handle:
+            handle.write("x")
 
 
 class LateReads(unittest.TestCase):

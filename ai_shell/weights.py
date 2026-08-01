@@ -122,6 +122,51 @@ def resolve(ref):
     return revision, [_as_file(repo, revision, siblings[name]) for name in chosen]
 
 
+def present(ref):
+    """The already-downloaded weights for `ref` in the model folder, or None.
+
+    Offline by design, which is the whole reason it doesn't just call
+    resolve(): a settings screen listing six models must not make six
+    HuggingFace requests to find out which of them are on the disk it is
+    running from.
+
+    So the file name is matched instead. Every GGUF repo names its files after
+    itself — Qwen2.5-Coder-7B-Instruct-GGUF:Q6_K arrives as
+    qwen2.5-coder-7b-instruct-q6_k.gguf — and the quantisation is matched with
+    the same anchored test resolve uses, so a q4_k_m file is never mistaken
+    for the q4_k somebody asked for.
+
+    A guess, and treated as one: config.installed_models prefers the path a
+    finished download recorded, and only falls back here for weights fetched
+    by a build that kept no such record. Being wrong mislabels a row in a
+    list; it cannot cause a download, because ensure() skips any file already
+    on disk, and it cannot cause the wrong file to be loaded, because the path
+    llama-server is given always comes from ensure().
+    """
+    try:
+        repo, quant = _split_ref(ref)
+    except WeightsError:
+        return None
+
+    stem = repo.rsplit("/", 1)[-1]
+    if stem.lower().endswith("-gguf"):
+        stem = stem[: -len("-gguf")]
+
+    try:
+        names = os.listdir(config.MODEL_DIR)
+    except OSError:
+        return None  # no folder yet, or one we can't read: nothing is installed
+
+    prefix = f"{stem.lower()}-"
+    unsplit, shards = _matching(
+        [name for name in names if name.lower().startswith(prefix)], quant
+    )
+    # Same preference as resolve: one file beats a set of shards, and the
+    # first shard is what llama.cpp is pointed at when shards are all there is.
+    chosen = unsplit[:1] or shards[:1]
+    return os.path.join(config.MODEL_DIR, chosen[0]) if chosen else None
+
+
 # How many times a transfer is restarted before the user is told. Generous
 # because each attempt resumes: the cost of one more try is seconds, and the
 # cost of giving up too early is a download somebody has to start again.
