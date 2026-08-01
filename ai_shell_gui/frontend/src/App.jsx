@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 
 let nextId = 1;
 const uid = () => nextId++;
+
+// The identity every report of a failed model start shares. See upsertEntry.
+const STARTUP_ERROR = "startup-error";
 
 // --- key sounds: tiny synthesized ticks via Web Audio, no asset files ---
 // Each keystroke is a short bandpassed noise "tap" plus a decaying tone blip;
@@ -729,7 +732,7 @@ function ThinkingDots() {
   );
 }
 
-function Entry({ entry, onConfirm, onChoose, busy }) {
+function Entry({ entry, onConfirm, onChoose, onRetry, busy }) {
   switch (entry.kind) {
     case "user":
       return (
@@ -742,8 +745,13 @@ function Entry({ entry, onConfirm, onChoose, busy }) {
       return <div className="entry system-line">{entry.text}</div>;
     case "error":
       return (
-        <div className="entry system-line" style={{ color: "var(--danger)" }}>
-          {entry.text}
+        <div className="entry system-line error-line" style={{ color: "var(--danger)" }}>
+          <span>{entry.text}</span>
+          {entry.retry ? (
+            <button type="button" className="btn retry" onClick={onRetry}>
+              Try again
+            </button>
+          ) : null}
         </div>
       );
     case "explanation":
@@ -1063,18 +1071,25 @@ export default function App() {
   // is watch that start rather than assume it happened. Polled rather than
   // pushed: pywebview's bridge only calls in this direction, and a 400ms tick
   // on a line of text costs nothing next to what it's waiting for.
-  useEffect(() => {
-    let stopped = false;
+  // `stopped` is the window closing; `running` stops a Retry click starting a
+  // second poll alongside the first. Both live in a ref because the watcher
+  // outlives the render that started it — it is restarted by the Retry button
+  // as well as by the effect below.
+  const startupWatch = useRef({ stopped: false, running: false });
 
-    async function watchStartup() {
-      while (!stopped) {
+  const watchStartup = useCallback(async () => {
+    const watch = startupWatch.current;
+    if (watch.running) return;
+    watch.running = true;
+    try {
+      while (!watch.stopped) {
         let state;
         try {
           state = await window.pywebview.api.startup_status();
         } catch {
           return; // window closing — nothing left to report to
         }
-        if (stopped) return;
+        if (watch.stopped) return;
         if (state.state === "starting") {
           setBooting(state.message);
           await new Promise((r) => setTimeout(r, 400));
@@ -1083,20 +1098,24 @@ export default function App() {
         setBooting(null);
         if (state.state === "failed") {
           setStatus("error");
-          addEntry({ kind: "error", text: state.message });
+          upsertEntry(STARTUP_ERROR, { kind: "error", text: state.message, retry: true });
           return;
         }
         // Ready — confirm it can actually be talked to, which is a different
         // question from whether the process started.
         const res = await window.pywebview.api.check_connection();
-        if (!res.ok && !stopped) {
+        if (!res.ok && !watch.stopped) {
           setStatus("error");
-          addEntry({ kind: "error", text: res.error });
+          upsertEntry(STARTUP_ERROR, { kind: "error", text: res.error, retry: true });
         }
         return;
       }
+    } finally {
+      watch.running = false;
     }
+  }, []);
 
+  useEffect(() => {
     function onReady() {
       setReady(true);
       watchStartup();
@@ -1104,10 +1123,26 @@ export default function App() {
     if (window.pywebview) onReady();
     else window.addEventListener("pywebviewready", onReady);
     return () => {
-      stopped = true;
+      startupWatch.current.stopped = true;
       window.removeEventListener("pywebviewready", onReady);
     };
-  }, []);
+  }, [watchStartup]);
+
+  // Starting the model again after a start that failed. The backend refuses
+  // unless there is a failure to retry, so a double-click costs nothing; and
+  // because the partial download survives, this resumes rather than restarts.
+  async function onRetryStartup() {
+    let res;
+    try {
+      res = await window.pywebview.api.retry_startup();
+    } catch {
+      return; // window closing
+    }
+    if (!res || !res.ok) return;
+    setStatus("idle");
+    setEntries((prev) => prev.filter((e) => e.key !== STARTUP_ERROR));
+    watchStartup();
+  }
 
   // The other thing happening in the background at startup: a look for a
   // newer version of the app. Nothing is shown while it checks or downloads —
@@ -1169,6 +1204,20 @@ export default function App() {
     const entry = { id: uid(), ...partial };
     setEntries((prev) => [...prev, entry]);
     return entry.id;
+  }
+
+  // A startup failure is reported by two different paths — the watcher below,
+  // and a request that was held while the server started and has to be
+  // answered somehow. Both are right; only the display was duplicated. Giving
+  // the entry a stable key makes the second report replace the first.
+  function upsertEntry(key, partial) {
+    setEntries((prev) => {
+      const at = prev.findIndex((e) => e.key === key);
+      if (at < 0) return [...prev, { id: uid(), key, ...partial }];
+      const next = [...prev];
+      next[at] = { ...next[at], ...partial };
+      return next;
+    });
   }
 
   function askConfirmation(command) {
@@ -1281,8 +1330,9 @@ export default function App() {
       setEntries((prev) => prev.filter((e) => e.id !== thinkingId));
 
       // The request was held while the server started, and the start failed.
+      // Same entry as the watcher's, not a second copy of it.
       if (data.error) {
-        addEntry({ kind: "error", text: data.explanation });
+        upsertEntry(STARTUP_ERROR, { kind: "error", text: data.explanation, retry: true });
         setStatus("error");
         return;
       }
@@ -1592,6 +1642,7 @@ export default function App() {
                   entry={entry}
                   onConfirm={onConfirmClick}
                   onChoose={onChooseOption}
+                  onRetry={onRetryStartup}
                   busy={busy}
                 />
               ))}
