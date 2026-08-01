@@ -29,6 +29,7 @@ def run_command(command, cwd=None):
             current.shell_argv(command),
             capture_output=True, timeout=60, cwd=cwd,
             encoding="utf-8", errors="replace",
+            **current.SPAWN_KWARGS,
         )
         return result
     except Exception as e:

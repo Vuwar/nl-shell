@@ -86,6 +86,30 @@ class Posix(Platform):
     def context_paths(self, command):
         return [os.path.expanduser(os.path.expandvars(p)) for p in super().context_paths(command)]
 
+    def prefill_input(self, prompt, text):
+        """readline does the whole job: a startup hook puts the text in the
+        buffer, and the user gets the line editing they already have in their
+        shell. Not present on every build of Python, hence the guard."""
+        try:
+            import readline
+        except ImportError:
+            return None
+
+        def hook():
+            readline.insert_text(text)
+            readline.redisplay()
+
+        readline.set_startup_hook(hook)
+        try:
+            return input(prompt)
+        except (EOFError, KeyboardInterrupt):
+            # Both mean "not this one" — an empty line, which the caller reads
+            # as a cancellation.
+            print()
+            return ""
+        finally:
+            readline.set_startup_hook()
+
     # --- directory listings ----------------------------------------------
     def list_directory_command(self, path):
         # Dotfiles are hidden by default, the same as every file manager: a

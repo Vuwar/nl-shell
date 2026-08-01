@@ -34,17 +34,11 @@ the performance can install that build themselves and point AI_SHELL_SERVER at
 it — which is the case the first rule above exists to protect.
 """
 
-import json
 import os
 import platform
 import shutil
-import stat
-import tarfile
-import urllib.error
-import urllib.request
-import zipfile
 
-from ai_shell import config
+from ai_shell import config, fetch
 
 # The release the binaries come from. ggml-org is llama.cpp's own org, and
 # these are the builds its release page offers — the same ones the README
@@ -57,10 +51,6 @@ RELEASES_API = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
 INSTALL_DIR = os.path.join(config.CONFIG_DIR, "llama.cpp")
 
 BINARY_NAME = "llama-server.exe" if os.name == "nt" else "llama-server"
-
-# Big enough that "it downloaded" is a thing the user should be told about, so
-# progress is reported rather than the app appearing to hang on first launch.
-_PROGRESS_STEP = 10  # percent between progress lines
 
 
 class InstallError(RuntimeError):
@@ -118,74 +108,12 @@ def _find_binary(root):
     return None
 
 
-def _download(url, destination, on_progress):
-    """Fetch `url` to `destination`, reporting percentage as it goes."""
-    request = urllib.request.Request(url, headers={"User-Agent": "ai-shell"})
-    with urllib.request.urlopen(request, timeout=60) as response:
-        total = int(response.headers.get("Content-Length") or 0)
-        read = 0
-        reported = 0
-        with open(destination, "wb") as handle:
-            while True:
-                chunk = response.read(256 * 1024)
-                if not chunk:
-                    break
-                handle.write(chunk)
-                read += len(chunk)
-                if total:
-                    percent = read * 100 // total
-                    if percent >= reported + _PROGRESS_STEP:
-                        reported = percent - percent % _PROGRESS_STEP
-                        on_progress(reported)
-
-
-def _check_members(names, root):
-    """Refuse an archive whose members would be written outside `root`.
-
-    A release from llama.cpp's own CI is not the threat this guards against —
-    a substituted or corrupted archive is, and an extractor that can write
-    anywhere on the disk is worth not having.
-    """
-    root = os.path.realpath(root)
-    for name in names:
-        target = os.path.realpath(os.path.join(root, name))
-        if target != root and not target.startswith(root + os.sep):
-            raise InstallError(f"Refusing to extract '{name}': it points outside {root}.")
-
-
-def _extract(archive_path, destination):
-    if archive_path.endswith(".zip"):
-        with zipfile.ZipFile(archive_path) as archive:
-            _check_members(archive.namelist(), destination)
-            archive.extractall(destination)
-    else:
-        with tarfile.open(archive_path) as archive:
-            _check_members(archive.getnames(), destination)
-            archive.extractall(destination)
-
-
-def _make_executable(path):
-    """Restore the executable bit, which a zip doesn't carry."""
-    if os.name == "nt":
-        return
-    mode = os.stat(path).st_mode
-    os.chmod(path, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-
-
 def _release():
     """(tag, {asset name: download url}) for the latest llama.cpp release."""
-    request = urllib.request.Request(RELEASES_API, headers={"User-Agent": "ai-shell"})
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            data = json.load(response)
-    except (urllib.error.URLError, OSError, ValueError) as error:
+        return fetch.github_release(RELEASES_API)
+    except fetch.FetchError as error:
         raise InstallError(f"Couldn't reach the llama.cpp release page: {error}") from None
-    assets = {
-        asset.get("name", ""): asset.get("browser_download_url")
-        for asset in data.get("assets", [])
-        if asset.get("browser_download_url")
-    }
-    return data.get("tag_name") or "latest", assets
 
 
 def _install(say):
@@ -220,21 +148,23 @@ def _install(say):
     try:
         # Named in full rather than "%": these lines are also the desktop
         # panel's startup message, where a bare number says nothing.
-        _download(assets[name], archive_path, lambda percent: say(f"Downloading llama.cpp — {percent}%"))
-        _extract(archive_path, staging)
+        fetch.download(
+            assets[name], archive_path, lambda percent: say(f"Downloading llama.cpp — {percent}%")
+        )
+        fetch.extract(archive_path, staging)
         os.remove(archive_path)
 
         binary = _find_binary(staging)
         if not binary:
             raise InstallError(f"{name} didn't contain {BINARY_NAME}.")
-        _make_executable(binary)
+        fetch.make_executable(binary)
 
         shutil.rmtree(INSTALL_DIR, ignore_errors=True)
         os.replace(staging, INSTALL_DIR)
     except InstallError:
         shutil.rmtree(staging, ignore_errors=True)
         raise
-    except (urllib.error.URLError, OSError, ValueError, zipfile.BadZipFile, tarfile.TarError) as error:
+    except (fetch.FetchError, OSError) as error:
         shutil.rmtree(staging, ignore_errors=True)
         raise InstallError(f"Couldn't install llama.cpp: {error}") from None
 

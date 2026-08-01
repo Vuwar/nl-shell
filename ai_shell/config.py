@@ -25,6 +25,7 @@ import os
 # Submodules imported directly, not as `from ai_shell import ...`: this module
 # is reached through ai_shell/__init__.py importing Session, so the package
 # object is still half-built when these run and has no attributes yet.
+import ai_shell
 import ai_shell.hardware as hardware
 import ai_shell.models as models
 from ai_shell.platforms import current
@@ -104,6 +105,18 @@ MODEL = os.environ.get("AI_SHELL_MODEL") or _MODEL.id
 MODEL_REF = os.environ.get("AI_SHELL_MODEL_REF") or _MODEL.ref
 MODEL_LABEL = _MODEL.label
 
+# Where the weights are kept. Ours, beside the llama.cpp install runtime.py
+# puts in the same folder, so uninstalling stays "delete a folder". Not
+# llama.cpp's own cache: sharing one copy with a hand-run llama-server would
+# mean reproducing its undocumented file naming exactly, and being wrong about
+# it means silently downloading a second copy of several gigabytes. The
+# override is for a machine whose system drive is the wrong place for 20GB.
+MODEL_DIR = (
+    os.environ.get("AI_SHELL_MODEL_DIR")
+    or _SETTINGS.get("model_dir")
+    or os.path.join(CONFIG_DIR, "models")
+)
+
 # --- the server -----------------------------------------------------------
 HOST = os.environ.get("AI_SHELL_HOST") or "127.0.0.1"
 PORT = int(os.environ.get("AI_SHELL_PORT") or _SETTINGS.get("port") or DEFAULT_PORT)
@@ -123,6 +136,36 @@ SERVER_BINARY_EXPLICIT = bool(_NAMED_SERVER)
 # Which llama.cpp release was installed for us, if any. Recorded so the engine
 # isn't silently swapped underneath the user on some later launch.
 RUNTIME_RELEASE = _SETTINGS.get("llama_cpp_release")
+
+# --- updating the app itself ----------------------------------------------
+# What this build calls itself, for ai_shell.updater to compare against the
+# latest release. The one attribute of the half-built package it is safe to
+# read here: __version__ is assigned in ai_shell/__init__.py above the import
+# that leads to this module, so by the time this line runs it is already set.
+VERSION = ai_shell.__version__
+
+# Whether the app may look for, and download, a newer version of itself. On by
+# default; the install is still never applied without the user asking for it
+# (see ai_shell/updater.py). Off entirely for anyone who'd rather their
+# software didn't phone home, and for packagers whose distribution does the
+# updating.
+AUTO_UPDATE = (os.environ.get("AI_SHELL_AUTO_UPDATE") or "").strip() != "0" and bool(
+    _SETTINGS.get("auto_update", True)
+)
+
+# When GitHub was last asked, as a Unix timestamp. Kept so that launching the
+# app five times in an afternoon is one request, not five.
+LAST_UPDATE_CHECK = _SETTINGS.get("update_checked_at") or 0
+
+# Whether an edited command is recorded to CONFIG_DIR/corrections.jsonl. On by
+# default, and unlike anything that reads existing shell history this only sees
+# commands typed into this app, in this session, on their way to running — it
+# never leaves the machine. Off by default would collect nothing, which is the
+# same as not having the feature. See ai_shell/corrections.py for what a record
+# holds and what is scrubbed out of it first.
+CORRECTIONS = (os.environ.get("AI_SHELL_CORRECTIONS") or "").strip() != "0" and bool(
+    _SETTINGS.get("corrections", True)
+)
 
 # -1 offloads every layer to the GPU; 0 keeps the whole model on the CPU.
 # Deciding here rather than passing -1 always: llama.cpp will happily offload
@@ -175,6 +218,15 @@ def remember_runtime(tag):
     global RUNTIME_RELEASE
     RUNTIME_RELEASE = tag
     _SETTINGS["llama_cpp_release"] = tag
+    _write_settings(_SETTINGS)
+
+
+def remember_update_check(when):
+    """Record that the release page was just checked, so the next launch a
+    minute later doesn't ask again."""
+    global LAST_UPDATE_CHECK
+    LAST_UPDATE_CHECK = when
+    _SETTINGS["update_checked_at"] = when
     _write_settings(_SETTINGS)
 
 

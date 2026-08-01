@@ -39,11 +39,13 @@ _CREATES_ITEM = re.compile(
 _OBJECT_DUMP = re.compile(r"^Mode\s+LastWriteTime\s+.*\bName\s*$", re.MULTILINE)
 
 
+# See SPAWN_KWARGS.
+_CREATE_NO_WINDOW = 0x08000000
+
 # Job-object plumbing for start_background. A job with KILL_ON_JOB_CLOSE set
 # terminates every process in it the moment the last handle to the job goes
 # away — including when that happens because the owning process died without
 # cleaning up, which is exactly the case an atexit hook can't cover.
-_CREATE_NO_WINDOW = 0x08000000
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
 _JobObjectExtendedLimitInformation = 9
 _PROCESS_SET_QUOTA = 0x0100
@@ -121,6 +123,37 @@ class _MemoryStatusEx(ctypes.Structure):
     ]
 
 
+# Console input records, for prefilling a line the user can then edit with the
+# console's own editor (see Windows.prefill_input). Windows has no readline,
+# and writing one is a great deal more code than handing the terminal the
+# keystrokes and letting it do what it already does.
+_STD_INPUT_HANDLE = -10
+_KEY_EVENT = 0x0001
+
+
+class _CharUnion(ctypes.Union):
+    _fields_ = [("UnicodeChar", ctypes.c_wchar), ("AsciiChar", ctypes.c_char)]
+
+
+class _KeyEventRecord(ctypes.Structure):
+    _fields_ = [
+        ("bKeyDown", ctypes.c_int),
+        ("wRepeatCount", ctypes.c_ushort),
+        ("wVirtualKeyCode", ctypes.c_ushort),
+        ("wVirtualScanCode", ctypes.c_ushort),
+        ("uChar", _CharUnion),
+        ("dwControlKeyState", ctypes.c_uint),
+    ]
+
+
+class _EventUnion(ctypes.Union):
+    _fields_ = [("KeyEvent", _KeyEventRecord)]
+
+
+class _InputRecord(ctypes.Structure):
+    _fields_ = [("EventType", ctypes.c_ushort), ("Event", _EventUnion)]
+
+
 class Windows(Platform):
     OS_NAME = "Windows"
     SHELL_NAME = "PowerShell"
@@ -187,6 +220,21 @@ app they mean, ask — the fallback can only launch the app you name, so a
 wrong guess fails instead of opening something else."""
 
     # --- running commands -------------------------------------------------
+    # CREATE_NO_WINDOW, on everything this app starts.
+    #
+    # The desktop app is a windowed binary with no console of its own, so
+    # Windows gives every console child a brand new one — and on Windows 11
+    # that console is hosted by Windows Terminal, which means a full terminal
+    # window, tabs and all, appearing over the desktop. The installed-app
+    # scan runs from Session.__init__, before the panel is drawn, so without
+    # this flag the first thing a user sees after launching the app is a
+    # PowerShell window they never asked for; every confirmed command then
+    # flashes another.
+    #
+    # Costs nothing where there is a console already: the CLI's children
+    # write to captured pipes, not to the console it took the flag from.
+    SPAWN_KWARGS = {"creationflags": _CREATE_NO_WINDOW}
+
     def shell_argv(self, command):
         # The preamble is not cosmetic. Windows PowerShell writes redirected
         # output in the console's OEM codepage, so a filename or an app name
@@ -220,6 +268,53 @@ wrong guess fails instead of opening something else."""
         _, sep, rest = line.partition(" : ")
         return rest if sep else line
 
+    def prefill_input(self, prompt, text):
+        """The command typed into the console's input buffer before the user
+        gets there, so `input()` comes up with it already on the line and the
+        console's own editor handles arrows and backspace.
+
+        None whenever there is no real console to write into — a redirected
+        stdin, which is what a test run, a pipe and CI all have. The caller
+        then prints a type-over prompt instead.
+        """
+        if not text:
+            return None
+        try:
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.GetStdHandle(_STD_INPUT_HANDLE)
+            if handle in (0, -1):
+                return None
+            # GetConsoleMode fails on anything that isn't a console, which is
+            # exactly the case where the injection below would go nowhere.
+            mode = ctypes.c_uint()
+            if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                return None
+
+            records = (_InputRecord * (len(text) * 2))()
+            for index, char in enumerate(text):
+                for offset, down in ((0, 1), (1, 0)):
+                    record = records[index * 2 + offset]
+                    record.EventType = _KEY_EVENT
+                    record.Event.KeyEvent.bKeyDown = down
+                    record.Event.KeyEvent.wRepeatCount = 1
+                    record.Event.KeyEvent.wVirtualKeyCode = 0
+                    record.Event.KeyEvent.wVirtualScanCode = 0
+                    record.Event.KeyEvent.uChar.UnicodeChar = char
+                    record.Event.KeyEvent.dwControlKeyState = 0
+            written = ctypes.c_uint()
+            if not kernel32.WriteConsoleInputW(
+                handle, records, len(records), ctypes.byref(written)
+            ):
+                return None
+        except (OSError, AttributeError, ValueError):
+            return None
+
+        try:
+            return input(prompt)
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return ""
+
     def echoes_created_item(self, command, output):
         """Making a folder shouldn't answer with an attribute-flag table. Both
         halves have to match: read-only commands can legitimately produce that
@@ -228,9 +323,9 @@ wrong guess fails instead of opening something else."""
 
     # --- background processes ----------------------------------------------
     def start_background(self, argv, log):
-        """CREATE_NO_WINDOW so a console doesn't flash over the desktop panel
-        every launch, plus a kill-on-close job object so the child can't be
-        orphaned.
+        """SPAWN_KWARGS' CREATE_NO_WINDOW so a console doesn't flash over the
+        desktop panel every launch, plus a kill-on-close job object so the
+        child can't be orphaned.
 
         Failing to build the job is not fatal. It's the safety net, not the
         mechanism — and it legitimately fails where we're already inside
@@ -242,7 +337,7 @@ wrong guess fails instead of opening something else."""
             stdout=log,
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
-            creationflags=_CREATE_NO_WINDOW,
+            **self.SPAWN_KWARGS,
         )
 
         job = None
@@ -361,7 +456,7 @@ wrong guess fails instead of opening something else."""
         try:
             result = subprocess.run(
                 self.shell_argv(script), capture_output=True, timeout=15,
-                encoding="utf-8", errors="replace",
+                encoding="utf-8", errors="replace", **self.SPAWN_KWARGS,
             )
         except Exception:
             return []

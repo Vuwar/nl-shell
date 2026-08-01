@@ -719,6 +719,60 @@
   line-height: 1.45;
 }
 
+/* --- update ready --------------------------------------------------------
+   Same shape as the boot row, because it's the same kind of thing: a line the
+   panel grew to say something about itself. Not styled as an alert — an
+   update that has already downloaded is good news sitting quietly, and the
+   only urgency an app should manufacture about itself is none. */
+.update-row {
+  border-top: 1px solid transparent;
+  border-image: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.14) 20%,
+      rgba(255, 255, 255, 0.14) 80%,
+      transparent
+    )
+    1;
+  padding: 10px 14px 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: entryIn 340ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* The status dot's quieter cousin: same 7px mark in the same column, so the
+   row lines up with the input above it. */
+.update-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-soft);
+}
+
+.update-text {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.45;
+  flex: 1;
+}
+
+.btn.update {
+  background: rgba(139, 123, 255, 0.22);
+  color: var(--text);
+}
+.btn.update:hover {
+  background: rgba(139, 123, 255, 0.32);
+}
+.btn.update:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+  filter: none;
+}
+
 .output {
   border-top: 1px solid transparent;
   border-image: linear-gradient(
@@ -867,6 +921,47 @@
   flex: 1;
 }
 
+/* The command sits directly above the confirmation and shares its outline, so
+   the two read as one block: what is about to happen, and the decision. */
+.confirm-block {
+  margin-top: 8px;
+}
+
+.confirm-block .confirm-row {
+  margin-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.confirm-command,
+.confirm-edit {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+  margin: 0;
+  padding: 10px 12px;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.confirm-edit {
+  display: block;
+  width: 100%;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.confirm-edit:focus {
+  border-color: rgba(255, 107, 107, 0.45);
+}
+
 .btn {
   font-family: var(--ui);
   font-size: 12.5px;
@@ -898,6 +993,26 @@
   color: var(--text);
 }
 .btn.cancel:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* A failed model start. The button shares the line with the message rather
+   than sitting in a button row of its own, so the error stays one thing on
+   screen — and the message runs to several lines, hence the top alignment. */
+.error-line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.btn.retry {
+  flex: none;
+  align-self: center;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+.btn.retry:hover {
   background: rgba(255, 255, 255, 0.16);
 }
 

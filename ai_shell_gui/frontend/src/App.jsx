@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 
 let nextId = 1;
 const uid = () => nextId++;
+
+// The identity every report of a failed model start shares. See upsertEntry.
+const STARTUP_ERROR = "startup-error";
 
 // --- key sounds: tiny synthesized ticks via Web Audio, no asset files ---
 // Each keystroke is a short bandpassed noise "tap" plus a decaying tone blip;
@@ -305,6 +308,88 @@ function useRotatingHint(paused) {
 // native event on its way there, so stopping it here is enough to keep the
 // two from fighting over the same gesture.
 const keepGesture = (e) => e.stopPropagation();
+
+// The confirmation for a risky command: what it is, and a chance to fix it.
+// Its own component because the edit box holds state, and the entry list that
+// renders it is otherwise stateless.
+function ConfirmRow({ command, onDecide }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(command);
+  const areaRef = useRef(null);
+
+  useEffect(() => {
+    if (editing && areaRef.current) {
+      areaRef.current.focus();
+      const end = areaRef.current.value.length;
+      areaRef.current.setSelectionRange(end, end);
+    }
+  }, [editing]);
+
+  function submitEdit() {
+    const text = draft.trim();
+    // An empty edit cancels rather than running an empty command — the same
+    // rule the console REPL follows.
+    onDecide(text ? { proceed: true, command: text } : { proceed: false, command: null });
+  }
+
+  function onKeyDown(e) {
+    // Shift+Enter inserts a newline: a "command" may be a short script.
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submitEdit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onDecide({ proceed: false, command: null });
+    }
+  }
+
+  return (
+    <div className="entry confirm-block">
+      {editing ? (
+        <textarea
+          ref={areaRef}
+          className="confirm-edit"
+          value={draft}
+          spellCheck={false}
+          rows={Math.min(6, draft.split("\n").length)}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKeyDown}
+          onMouseDown={keepGesture}
+        />
+      ) : (
+        <pre className="confirm-command" onMouseDown={keepGesture}>
+          {command}
+        </pre>
+      )}
+      <div className="confirm-row">
+        <span>Run this? It can't easily be undone.</span>
+        {editing ? (
+          <button className="btn run" onClick={submitEdit}>
+            Run it
+          </button>
+        ) : (
+          <>
+            <button
+              className="btn run"
+              onClick={() => onDecide({ proceed: true, command: null })}
+            >
+              Run it
+            </button>
+            <button className="btn" onClick={() => setEditing(true)}>
+              Edit
+            </button>
+          </>
+        )}
+        <button
+          className="btn cancel"
+          onClick={() => onDecide({ proceed: false, command: null })}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 async function writeClipboard(text) {
   // Focus moves to the scratch textarea in the fallback path; the input has to
@@ -647,7 +732,7 @@ function ThinkingDots() {
   );
 }
 
-function Entry({ entry, onConfirm, onChoose, busy }) {
+function Entry({ entry, onConfirm, onChoose, onRetry, busy }) {
   switch (entry.kind) {
     case "user":
       return (
@@ -660,8 +745,13 @@ function Entry({ entry, onConfirm, onChoose, busy }) {
       return <div className="entry system-line">{entry.text}</div>;
     case "error":
       return (
-        <div className="entry system-line" style={{ color: "var(--danger)" }}>
-          {entry.text}
+        <div className="entry system-line error-line" style={{ color: "var(--danger)" }}>
+          <span>{entry.text}</span>
+          {entry.retry ? (
+            <button type="button" className="btn retry" onClick={onRetry}>
+              Try again
+            </button>
+          ) : null}
         </div>
       );
     case "explanation":
@@ -702,15 +792,10 @@ function Entry({ entry, onConfirm, onChoose, busy }) {
       );
     case "confirm":
       return (
-        <div className="entry confirm-row">
-          <span>Run this? It can't easily be undone.</span>
-          <button className="btn run" onClick={() => onConfirm(entry.id, true)}>
-            Run it
-          </button>
-          <button className="btn cancel" onClick={() => onConfirm(entry.id, false)}>
-            Cancel
-          </button>
-        </div>
+        <ConfirmRow
+          command={entry.command}
+          onDecide={(decision) => onConfirm(entry.id, decision)}
+        />
       );
     case "skipped":
       return <div className="entry system-line">Skipped.</div>;
@@ -766,6 +851,11 @@ export default function App() {
   const [status, setStatus] = useState("idle"); // idle | thinking | ok | error
   // What the model server is doing while it starts, or null once it's up.
   const [booting, setBooting] = useState(null);
+  // The version waiting to be installed, once one has finished downloading.
+  // Null until then — a check nobody asked for shouldn't be visible while
+  // it's happening, only when it has something to offer.
+  const [updateReady, setUpdateReady] = useState(null);
+  const [updating, setUpdating] = useState(false);
   const [focused, setFocused] = useState(false);
   // Folded into the corner tile because the app isn't the one being used.
   const [minimized, setMinimized] = useState(false);
@@ -981,18 +1071,25 @@ export default function App() {
   // is watch that start rather than assume it happened. Polled rather than
   // pushed: pywebview's bridge only calls in this direction, and a 400ms tick
   // on a line of text costs nothing next to what it's waiting for.
-  useEffect(() => {
-    let stopped = false;
+  // `stopped` is the window closing; `running` stops a Retry click starting a
+  // second poll alongside the first. Both live in a ref because the watcher
+  // outlives the render that started it — it is restarted by the Retry button
+  // as well as by the effect below.
+  const startupWatch = useRef({ stopped: false, running: false });
 
-    async function watchStartup() {
-      while (!stopped) {
+  const watchStartup = useCallback(async () => {
+    const watch = startupWatch.current;
+    if (watch.running) return;
+    watch.running = true;
+    try {
+      while (!watch.stopped) {
         let state;
         try {
           state = await window.pywebview.api.startup_status();
         } catch {
           return; // window closing — nothing left to report to
         }
-        if (stopped) return;
+        if (watch.stopped) return;
         if (state.state === "starting") {
           setBooting(state.message);
           await new Promise((r) => setTimeout(r, 400));
@@ -1001,20 +1098,24 @@ export default function App() {
         setBooting(null);
         if (state.state === "failed") {
           setStatus("error");
-          addEntry({ kind: "error", text: state.message });
+          upsertEntry(STARTUP_ERROR, { kind: "error", text: state.message, retry: true });
           return;
         }
         // Ready — confirm it can actually be talked to, which is a different
         // question from whether the process started.
         const res = await window.pywebview.api.check_connection();
-        if (!res.ok && !stopped) {
+        if (!res.ok && !watch.stopped) {
           setStatus("error");
-          addEntry({ kind: "error", text: res.error });
+          upsertEntry(STARTUP_ERROR, { kind: "error", text: res.error, retry: true });
         }
         return;
       }
+    } finally {
+      watch.running = false;
     }
+  }, []);
 
+  useEffect(() => {
     function onReady() {
       setReady(true);
       watchStartup();
@@ -1022,10 +1123,82 @@ export default function App() {
     if (window.pywebview) onReady();
     else window.addEventListener("pywebviewready", onReady);
     return () => {
-      stopped = true;
+      startupWatch.current.stopped = true;
       window.removeEventListener("pywebviewready", onReady);
     };
-  }, []);
+  }, [watchStartup]);
+
+  // Starting the model again after a start that failed. The backend refuses
+  // unless there is a failure to retry, so a double-click costs nothing; and
+  // because the partial download survives, this resumes rather than restarts.
+  async function onRetryStartup() {
+    let res;
+    try {
+      res = await window.pywebview.api.retry_startup();
+    } catch {
+      return; // window closing
+    }
+    if (!res || !res.ok) return;
+    setStatus("idle");
+    setEntries((prev) => prev.filter((e) => e.key !== STARTUP_ERROR));
+    watchStartup();
+  }
+
+  // The other thing happening in the background at startup: a look for a
+  // newer version of the app. Nothing is shown while it checks or downloads —
+  // an update the user can't act on yet is noise — so this watches for the
+  // one state that has anything to say, and then stops watching.
+  useEffect(() => {
+    if (!ready) return;
+    let stopped = false;
+    let idleTicks = 0;
+
+    async function watchUpdate() {
+      while (!stopped) {
+        let state;
+        try {
+          state = await window.pywebview.api.update_status();
+        } catch {
+          return; // window closing
+        }
+        if (stopped) return;
+        if (state.state === "ready") {
+          setUpdateReady(state);
+          return;
+        }
+        // "failed" is the end of it too, and deliberately silent: a failed
+        // update check is not the user's problem to solve mid-sentence.
+        if (state.state === "failed") return;
+        // "idle" is both "nothing to update" and "the thread hasn't started
+        // yet", so a few ticks of it are given before taking it as the answer.
+        if (state.state === "idle" && ++idleTicks > 4) return;
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    }
+
+    watchUpdate();
+    return () => {
+      stopped = true;
+    };
+  }, [ready]);
+
+  async function onInstallUpdate() {
+    if (updating) return;
+    setUpdating(true);
+    try {
+      const result = await window.pywebview.api.install_update();
+      // Success closes the window from the Python side, so anything that
+      // comes back here is a failure worth showing.
+      if (!result.ok) {
+        setUpdateReady(null);
+        addEntry({ kind: "error", text: result.error });
+      }
+    } catch {
+      setUpdateReady(null);
+    } finally {
+      setUpdating(false);
+    }
+  }
 
   function addEntry(partial) {
     const entry = { id: uid(), ...partial };
@@ -1033,18 +1206,32 @@ export default function App() {
     return entry.id;
   }
 
-  function askConfirmation() {
+  // A startup failure is reported by two different paths — the watcher below,
+  // and a request that was held while the server started and has to be
+  // answered somehow. Both are right; only the display was duplicated. Giving
+  // the entry a stable key makes the second report replace the first.
+  function upsertEntry(key, partial) {
+    setEntries((prev) => {
+      const at = prev.findIndex((e) => e.key === key);
+      if (at < 0) return [...prev, { id: uid(), key, ...partial }];
+      const next = [...prev];
+      next[at] = { ...next[at], ...partial };
+      return next;
+    });
+  }
+
+  function askConfirmation(command) {
     return new Promise((resolve) => {
-      const id = addEntry({ kind: "confirm" });
+      const id = addEntry({ kind: "confirm", command });
       confirmResolvers.current[id] = resolve;
     });
   }
 
-  function onConfirmClick(id, proceed) {
+  function onConfirmClick(id, decision) {
     setEntries((prev) => prev.filter((e) => e.id !== id));
     const resolve = confirmResolvers.current[id];
     delete confirmResolvers.current[id];
-    if (resolve) resolve(proceed);
+    if (resolve) resolve(decision);
   }
 
   function onChooseOption(id, option) {
@@ -1143,8 +1330,9 @@ export default function App() {
       setEntries((prev) => prev.filter((e) => e.id !== thinkingId));
 
       // The request was held while the server started, and the start failed.
+      // Same entry as the watcher's, not a second copy of it.
       if (data.error) {
-        addEntry({ kind: "error", text: data.explanation });
+        upsertEntry(STARTUP_ERROR, { kind: "error", text: data.explanation, retry: true });
         setStatus("error");
         return;
       }
@@ -1162,19 +1350,23 @@ export default function App() {
 
       addEntry({ kind: "explanation", text: data.explanation });
 
+      // None means run what the model wrote; a string is the user's own
+      // version, which the session records as a correction.
+      let edited = null;
       if (data.risk === "risky") {
-        const proceed = await askConfirmation();
-        if (!proceed) {
+        const decision = await askConfirmation(data.command);
+        if (!decision.proceed) {
           addEntry({ kind: "skipped" });
           setStatus("ok");
           return;
         }
+        edited = decision.command;
       }
 
       // Keep the dots up while the command (and, on failure, the model's
       // explanation of why) runs — both can take a few seconds.
       const runningId = addEntry({ kind: "thinking" });
-      const result = await window.pywebview.api.confirm();
+      const result = await window.pywebview.api.confirm(edited);
       setEntries((prev) => prev.filter((e) => e.id !== runningId));
 
       if (result && result.ok) {
@@ -1396,6 +1588,28 @@ export default function App() {
             </div>
           )}
 
+          {/* A new version is already downloaded and waiting. It is never
+              applied without this click: the app closes, swaps itself out and
+              comes back, which is not something to do to someone mid-thought.
+              Nothing here is dismissable because nothing here is urgent — the
+              row goes away by being acted on, or by closing the app. */}
+          {updateReady && (
+            <div className="update-row">
+              <span className="update-dot" />
+              <span className="update-text">
+                Version {updateReady.version} is ready to install
+              </span>
+              <button
+                type="button"
+                className="btn update"
+                disabled={updating}
+                onClick={onInstallUpdate}
+              >
+                {updating ? "Restarting…" : "Restart"}
+              </button>
+            </div>
+          )}
+
           {suggestions.length > 0 && (
             <div className="cmd-suggest">
               {suggestions.map((cmd, i) => (
@@ -1428,6 +1642,7 @@ export default function App() {
                   entry={entry}
                   onConfirm={onConfirmClick}
                   onChoose={onChooseOption}
+                  onRetry={onRetryStartup}
                   busy={busy}
                 />
               ))}

@@ -1,12 +1,13 @@
 """pywebview desktop window: same Session core as the CLI, a floating React panel instead of a console."""
 
 import os
+import socket
 import sys
 import threading
 
 import webview
 
-from ai_shell import Session, server
+from ai_shell import Session, server, updater
 from ai_shell.config import connection_error
 
 def _frontend_root():
@@ -58,6 +59,12 @@ class Api:
         self._settled = threading.Event()  # set once the server is up or has failed
         threading.Thread(target=self._start_server, daemon=True).start()
 
+        # Looking for a newer version of the app, on its own thread, behind
+        # everything else. It downloads what it finds and then waits — see
+        # install_update() for the half the user has a say in.
+        self._updater = updater.Updater()
+        self._updater.start()
+
         # Leading underscore: pywebview auto-exposes every public attribute
         # of this object to JS by recursively walking it via dir()/getattr().
         # A plain `self.window` sends it straight into the raw native window
@@ -92,10 +99,61 @@ class Api:
         with self._startup_lock:
             return dict(self._startup)
 
-    def _startup_failure(self):
-        """The startup error once there is one, or None. Never blocks."""
+    def retry_startup(self):
+        """Start the model server again after a start that failed.
+
+        The window used to have one attempt: _start_server ran on a thread
+        that finished, and there was no way back except closing the app.
+
+        Every failure gets this, not a subset judged transient — deciding
+        which errors are worth another go is guesswork, and being wrong about
+        it strands somebody with no button on something that would have
+        worked. It only saves a relaunch; it never does anything a relaunch
+        wouldn't.
+        """
         with self._startup_lock:
-            return self._startup["message"] if self._startup["state"] == "failed" else None
+            if self._startup["state"] != "failed":
+                return {"ok": False}  # already running, or already retrying
+            self._startup = {"state": "starting", "message": "Starting the model…"}
+            self._settled.clear()
+        threading.Thread(target=self._start_server, daemon=True).start()
+        return {"ok": True}
+
+    def _wait_for_startup(self):
+        """Block until a start attempt has settled; return its failure, or None.
+
+        A loop rather than one wait, because a retry can clear _settled
+        between the wait returning and the status being read — which would
+        leave a caller looking at "starting", finding no failure, and
+        translating against a server that isn't up. State and message are read
+        together under the lock, so the answer is self-consistent.
+        """
+        while True:
+            self._settled.wait()
+            with self._startup_lock:
+                state = self._startup["state"]
+                if state != "starting":
+                    return self._startup["message"] if state == "failed" else None
+
+    # --- updating the app ----------------------------------------------------
+    def update_status(self):
+        """{"state": idle|checking|downloading|ready|failed, "version",
+        "message", "notes_url"} — polled by the front end, which only puts
+        anything on screen once the state is "ready"."""
+        return self._updater.status()
+
+    def install_update(self):
+        """Hand over to the updater and close.
+
+        The window has to go for the app's own files to be replaceable, and
+        the script that does the replacing is already waiting for this process
+        to end — so a successful start here is immediately followed by the
+        same shutdown as quit(). It restarts the app when it's done.
+        """
+        result = self._updater.install()
+        if result["ok"]:
+            self.quit()
+        return result
 
     def resize(self, width, height):
         """Called on every content-size change so the frameless panel hugs
@@ -140,7 +198,15 @@ class Api:
         except Exception:
             # The startup failure, when there was one, says what actually went
             # wrong; the generic message can only say that nothing answered.
-            return {"ok": False, "error": self._startup_failure() or connection_error()}
+            # Read rather than waited for — this is called from the front end's
+            # poll, which must not block behind a start still in progress.
+            with self._startup_lock:
+                failure = (
+                    self._startup["message"]
+                    if self._startup["state"] == "failed"
+                    else None
+                )
+            return {"ok": False, "error": failure or connection_error()}
 
     def submit(self, user_input):
         # Typing while the model is still loading is the normal case now that
@@ -148,8 +214,7 @@ class Api:
         # server instead of failing against one that isn't listening yet. The
         # front end already has its thinking dots up, and the startup line
         # underneath says what the wait is for.
-        self._settled.wait()
-        failure = self._startup_failure()
+        failure = self._wait_for_startup()
         if failure:
             return {
                 "command": None,
@@ -176,9 +241,14 @@ class Api:
             "options": [o.strip() for o in options if isinstance(o, str) and o.strip()][:4],
         }
 
-    def confirm(self):
-        """Runs the pending command; returns {"ok", "output"} or {"ok", "reason"}."""
-        return self.session.run_last()
+    def confirm(self, command=None):
+        """Runs the pending command; returns {"ok", "output"} or {"ok", "reason"}.
+
+        `command` is the user's edit of what was shown, or None to run the
+        model's version. An edit is not re-classified for risk — it only
+        reached an edit box by having been called risky.
+        """
+        return self.session.run_last(command)
 
     def clear(self):
         """Wipes the conversation behind a cleared screen — /clear and Esc.
@@ -211,6 +281,30 @@ class Api:
         """
         if self._window:
             threading.Timer(0.05, self._window.destroy).start()
+
+
+def _free_port():
+    """A port nothing is listening on, for pywebview's own file server.
+
+    The built front end isn't loaded from disk — pywebview serves it over
+    HTTP and points the window at localhost. Which port that is matters more
+    than it sounds: with private_mode off, pywebview stops choosing a free
+    one and uses a single fixed port (42001) shared by every application on
+    the machine. Private mode has to stay off, because it wipes localStorage
+    on every run and the settings screen keeps its choices there.
+
+    So two copies of this app — an installed one and a checkout, or two
+    checkouts — are handed the same port. The second one's server fails to
+    bind, silently, on a daemon thread nobody is watching, and the window is
+    still pointed at the address. It then renders the *other* copy's front
+    end with this copy's Python behind it: a new backend answering through an
+    old UI, which produces symptoms that look like impossible bugs. Asking
+    the OS for a free port and naming it explicitly is what keeps the two
+    apart.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
 
 
 def main():
@@ -264,8 +358,9 @@ def main():
     api._window = window
     window.events.shown += lambda: _apply_window_chrome(window)
     # private_mode defaults to True, which wipes localStorage on every run —
-    # the settings screen persists its choices there.
-    webview.start(private_mode=False)
+    # the settings screen persists its choices there. Turning it off is also
+    # what makes the port explicit rather than optional; see _free_port.
+    webview.start(private_mode=False, http_port=_free_port())
 
 
 # SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER

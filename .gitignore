@@ -11,3 +11,9 @@ ai_shell_gui/frontend/dist/
 /build/
 /dist/
 *.egg-info/
+
+# Working notes from the design-and-plan workflow: useful while a feature is
+# being built, not part of the project. What they produced lives in the code,
+# the tests and the README instead.
+docs/superpowers/specs/
+docs/superpowers/plans/

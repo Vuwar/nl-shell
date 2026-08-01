@@ -40,6 +40,17 @@ class Platform:
     ABS_PATH = _NEVER
 
     # --- running commands -------------------------------------------------
+    # Extra keyword arguments for every process this app starts — the shell
+    # running a command, the app scan, the hardware probe, the model server.
+    # Nothing to say on a Unix, where a child process is just a child
+    # process; on Windows it is what keeps a console window off the user's
+    # desktop (see windows.Platform.SPAWN_KWARGS). It lives here, on the
+    # platform, because the alternative is remembering it at each call site
+    # one at a time — which is how the app scan came to open a PowerShell
+    # window in front of the panel while the background server, written with
+    # the flag, had none.
+    SPAWN_KWARGS = {}
+
     def shell_argv(self, command):
         """The argv that runs `command` in this OS's shell."""
         raise NotImplementedError
@@ -56,6 +67,18 @@ class Platform:
         """A line of error output with the shell's own noise removed, used
         when the model isn't available to explain a failure in plain words."""
         return line
+
+    def prefill_input(self, prompt, text):
+        """Ask for a line of input with `text` already in the buffer, so the
+        user edits it instead of retyping it. The line as they left it, or
+        None where this platform can't do it.
+
+        None and "" are different answers and the caller relies on it: None is
+        "no console editing here, fall back to a type-over prompt", while "" is
+        a user who cleared the line, which cancels. Returning "" for both would
+        turn an unsupported platform into a silent cancellation.
+        """
+        return None
 
     def echoes_created_item(self, command, output):
         """True when the output is nothing but the thing the command just
@@ -82,7 +105,8 @@ class Platform:
         This base version is the honest fallback: no link at all.
         """
         return subprocess.Popen(
-            argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL
+            argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            **self.SPAWN_KWARGS,
         ), None
 
     # --- directory listings ----------------------------------------------
@@ -159,7 +183,7 @@ class Platform:
         try:
             result = subprocess.run(
                 ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-                capture_output=True, timeout=10,
+                capture_output=True, timeout=10, **self.SPAWN_KWARGS,
                 # Numbers, so the encoding hardly matters — but text=True
                 # decodes strictly under the locale, and a probe that decides
                 # how much of the model goes on the GPU should not be able to

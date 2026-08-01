@@ -44,6 +44,11 @@ the installer. Both scripts are short and readable —
 [install.ps1](packaging/install.ps1), [install.sh](packaging/install.sh) —
 and reading a script before piping it into a shell is a good habit.
 
+You only do this once. After that the app keeps itself current: it downloads
+new releases in the background and offers a Restart button when one is ready —
+see [Updating an installed copy](#updating-an-installed-copy), including how to
+switch it off.
+
 ### pip
 
 If you already have Python 3.10+, this gets you both the window and the console
@@ -213,11 +218,31 @@ system prompt asks for a strict JSON shape and a fair number of rules at once,
 and families differ a lot in how reliably they hold that. Sizes within a
 family don't, so size is safe to vary.
 
+### The download, and losing your connection halfway through it
+
+The weights land in `models/` beside the settings file — `%APPDATA%\ai-shell\`
+on Windows, `~/.config/ai-shell/` elsewhere. They're several gigabytes, so
+they're fetched in a way that expects a connection to fail: a dropped transfer
+carries on from the byte it stopped at rather than starting over, and the app
+retries by itself, with a growing wait between attempts, before it says
+anything to you.
+
+If it does eventually give up, what already arrived stays on disk. The desktop
+window puts a **Try again** button on the error; in the console, running
+`ai-shell` again does the same thing. Either way it resumes rather than
+restarting. So does closing the app mid-download and opening it later.
+
+Every file is checked against the checksum HuggingFace publishes for it before
+it's used. That's a pass over the whole download, so you'll see a short
+"Checking the download…" at the end of the first run — a few seconds, bounded
+by how fast the disk reads rather than by anything clever.
+
 To override any of it:
 
 | Setting | What it does |
 | --- | --- |
 | `AI_SHELL_MODEL_REF` | The model to serve, as a HuggingFace ref — e.g. `Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M` |
+| `AI_SHELL_MODEL_DIR` | Where to keep the weights, if the default drive is the wrong one for 20GB |
 | `AI_SHELL_SERVER` | Full path to a `llama-server` of your own. Also turns the auto-install off |
 | `AI_SHELL_PORT` | Port to run it on (default 8080) |
 | `AI_SHELL_CONTEXT` | Context window in tokens (default 8192) |
@@ -320,16 +345,37 @@ fine.
   fall back to being asked nicely and having the answer salvaged
 - Safe commands run immediately
 - Risky commands (delete, overwrite, install, system settings, etc.) show
-  you the exact command and ask for confirmation before running
+  you the exact command and ask for confirmation before running — and let
+  you edit it first, because the model getting one path segment wrong
+  shouldn't mean retyping the whole request
+
+When you edit a command before running it, the pair — what you asked for, what
+the model wrote, what you replaced it with — is appended to
+`corrections.jsonl` in the config folder. It stays on your machine; nothing
+reads it yet, and nothing sends it anywhere. It exists so there is real data
+about where the model goes wrong on *your* computer by the time something can
+use it.
+
+Anything that looks like a credential is replaced with `[redacted]` first —
+values after `--password`, `-Token`, `--api-key` and friends, `password=` in a
+connection string, `Bearer` tokens, and long opaque hex or base64 runs. That is
+best-effort pattern matching, not a guarantee; file paths are deliberately left
+alone, because a record that scrubbed them would teach nothing.
+
+Turn it off with `AI_SHELL_CORRECTIONS=0`, or `"corrections": false` in
+`settings.json`.
 
 ## Project layout
 
 ```
 ai_shell/           core logic, no UI code — LLM calls, command execution, session state
 ai_shell/config.py  settings: environment, then settings.json, then measured defaults
+ai_shell/corrections.py  commands you edited before running, for later use as training/eval data
 ai_shell/models.py  the model list, and which one this machine should run
 ai_shell/hardware.py how much RAM and GPU memory there is
 ai_shell/runtime.py finds llama-server, and installs one when there isn't one
+ai_shell/updater.py notices a newer release of the app, and installs it on request
+ai_shell/fetch.py   downloading and unpacking, shared by those two
 ai_shell/server.py  starts, waits for and stops llama-server
 ai_shell/web.py     web search, for questions this machine can't answer
 ai_shell/platforms/ everything that differs between Windows, macOS and Linux
@@ -452,6 +498,51 @@ argument at a disadvantage. Windows users still download one file —
 `packaging/windows/installer.iss` wraps the folder in an installer, which also
 fetches the WebView2 runtime on the rare machine that hasn't got it.
 
+### Updating an installed copy
+
+Installed copies update themselves. On launch, in the background,
+`ai_shell/updater.py` asks the releases page whether there's a newer version,
+downloads the one asset matching how this copy was installed, and then stops:
+
+```
+Version 0.2.0 is ready to install          [ Restart ]
+```
+
+The download is automatic because it costs the user nothing to have it ready.
+The install is not, because an app that runs shell commands shouldn't replace
+itself mid-sentence. Clicking Restart closes the panel, swaps the app and
+opens it again; in the console REPL the same thing is the `update` command.
+
+How the swap happens depends on how the app got there, which the updater works
+out for itself:
+
+| How it was installed | How it updates |
+|---|---|
+| Windows installer (`unins000.exe` beside the exe) | runs the new setup silently — the `AppId` makes it an upgrade, not a second copy |
+| Windows portable zip | the folder is swapped for the new one |
+| macOS `.app` | the bundle is swapped |
+| Linux tarball | the folder is swapped |
+| pip | `pip install --upgrade` of the downloaded wheel |
+| a checkout of this repository | never — that's what `git pull` is for |
+
+Every one of those replaces files the running process has open, which Windows
+forbids outright. So the app doesn't do it: it writes a small `.cmd` or `.sh`
+script, starts it detached and quits, and the script waits for the process to
+disappear before touching anything. The old copy is moved aside *before* the
+new one lands, and put back if the new one won't move in — a failed update
+leaves a working app rather than half of two.
+
+Untouched by all of this: `%APPDATA%\ai-shell` (or `~/.config/ai-shell`), where
+the model weights and llama.cpp live. That's why an update is tens of megabytes
+and not several gigabytes.
+
+Two ways to turn it off — `"auto_update": false` in `settings.json`, or
+`AI_SHELL_AUTO_UPDATE=0` — after which nothing is checked and nothing is
+downloaded. The releases page is checked at most once every six hours, so
+launching the app five times in an afternoon is one request. Draft releases are
+invisible to it: GitHub's "latest" is the newest *published* release, so
+pressing publish is what actually ships a version to people.
+
 ## Tests
 
 ```
@@ -489,7 +580,9 @@ out of two real ones.
 - Command safety classification is done by the model's judgment, not a
   hardcoded rule list — good enough to start, not bulletproof. Don't point
   this at anything you can't afford to lose, and read the command before
-  confirming risky actions.
+  confirming risky actions. Editing one doesn't get it re-classified: it was
+  called risky once and it stays risky, which is the safe direction to be
+  wrong in.
 - No sandboxing — it runs with your full user permissions, same as opening
   a terminal yourself
 - Windows is the best-tested platform, simply because that's where it was
@@ -538,8 +631,6 @@ out of two real ones.
   actually run
 - Draw an icon, and sign the builds, so the download stops being something the
   OS warns about
-- Check the releases page on startup and say when there's a newer version —
-  the builds have no update mechanism at all right now
 - Add a config file for "always confirm" vs "trust more" modes
 - Add logging of every command run, so you have an audit trail
 - Teach it multi-step plans, so "back up my photos and then clear the folder"

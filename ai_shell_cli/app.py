@@ -2,9 +2,10 @@
 
 import sys
 
-from ai_shell import Session, server
+from ai_shell import Session, server, updater
 from ai_shell.config import connection_error
 from ai_shell.listing import format_listing
+from ai_shell.platforms import current
 from ai_shell.web import format_sources
 
 
@@ -41,9 +42,26 @@ def main():
         print(connection_error())
         sys.exit(1)
 
+    # Looks for a newer release and downloads it in the background; installing
+    # it is the "update" command below. relaunch=[] because this is a console
+    # session — coming back as a new window nobody asked for would be worse
+    # than the user typing `ai-shell` again.
+    updates = updater.Updater(relaunch=[])
+    updates.start()
+    announced = False
+
     print("AI Shell — type what you want in plain English. Ctrl+C to quit.\n")
 
     while True:
+        # Between prompts, not on a timer: an asynchronous line arriving while
+        # somebody is halfway through typing is the sort of thing that makes a
+        # REPL feel broken.
+        if not announced:
+            waiting = updates.status()
+            if waiting["state"] == "ready":
+                announced = True
+                print(f"  (version {waiting['version']} is downloaded — type 'update' to install it)\n")
+
         try:
             user_input = input("ai> ").strip()
         except (KeyboardInterrupt, EOFError):
@@ -54,6 +72,9 @@ def main():
             continue
         if user_input.lower() in ("exit", "quit"):
             break
+        if user_input.lower() == "update":
+            _install_update(updates)
+            continue
 
         data = session.translate(user_input)
         command = data.get("command")
@@ -84,13 +105,22 @@ def main():
 
         print(f"→ {explanation}")
 
+        # None means "run what the model wrote"; a string is the user's own
+        # version, which the session records as a correction.
+        edited = None
         if risk == "risky":
-            confirm = input("  This can't easily be undone. Run it? (y/N): ").strip().lower()
-            if confirm != "y":
+            print(f"\n  {command}\n")
+            choice = input("  This can't easily be undone. Run it? (y/N/e to edit): ").strip().lower()
+            if choice == "e":
+                edited = _edit_command(command)
+                if not edited:
+                    print("  Skipped.")
+                    continue
+            elif choice != "y":
                 print("  Skipped.")
                 continue
 
-        result = session.run_last()
+        result = session.run_last(edited)
         if not result["ok"]:
             print(f"✕ {result['reason']}")
         elif result.get("listing") is not None:
@@ -99,6 +129,57 @@ def main():
             print(format_listing(result["listing"], result["kind"]))
         else:
             print(result["output"] if result["output"] else "✓ Done")
+
+
+def _edit_command(command):
+    """The command as the user wants it, or "" to cancel.
+
+    Two ways in. Where the platform can seed the console's own line editor,
+    the command is already on the line and the user fixes the part that's
+    wrong. Where it can't — a redirected stdin, an unusual terminal — the
+    command has just been printed above, and whatever is typed replaces it
+    whole.
+
+    An empty line cancels on both paths. The alternative, where empty means
+    "keep it" when there is nothing in the buffer and "I deleted it" when
+    there is, makes the same keystroke run a risky command on one platform and
+    cancel it on another. Keeping the command unedited is what `y` is for.
+    """
+    edited = current.prefill_input("  ", command)
+    if edited is None:
+        print("  Type the corrected command, or leave it empty to cancel:")
+        try:
+            edited = input("  ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return ""
+    return edited.strip()
+
+
+def _install_update(updates):
+    """The `update` command: hand over to the updater and leave.
+
+    Leaving is the point — the files being replaced are the ones this process
+    is running out of, so the script the updater starts is waiting for this
+    interpreter to exit before it touches anything.
+    """
+    state = updates.status()
+    if state["state"] != "ready":
+        print(
+            {
+                "checking": "  Still checking for one.",
+                "downloading": f"  Downloading it now — {state['message']}",
+                "failed": f"  Couldn't fetch an update: {state['message']}",
+            }.get(state["state"], "  You're on the latest version.")
+        )
+        return
+
+    result = updates.install()
+    if not result["ok"]:
+        print(f"  {result['error']}")
+        return
+    print(f"  Installing {state['version']}. Run ai-shell again in a moment.")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
