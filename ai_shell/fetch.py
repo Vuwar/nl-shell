@@ -32,7 +32,27 @@ PROGRESS_STEP = 10
 
 
 class FetchError(RuntimeError):
-    """A download, an API call or an extraction didn't work out."""
+    """A download, an API call or an extraction didn't work out.
+
+    `cause` is the exception underneath, kept because the caller's decision
+    about it differs: a reset connection is worth retrying and a 404 is not,
+    and that judgement doesn't belong in a module with no opinion about its
+    payload.
+    """
+
+    def __init__(self, message, cause=None):
+        super().__init__(message)
+        self.cause = cause
+
+
+def json_document(url, timeout=30):
+    """Parsed JSON from `url`, or a FetchError carrying what went wrong."""
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.load(response)
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        raise FetchError(f"Couldn't reach {url}: {error}", error) from None
 
 
 def github_release(api_url, timeout=30):
@@ -41,12 +61,7 @@ def github_release(api_url, timeout=30):
     Works for /releases/latest and /releases/tags/<tag> alike — they return
     the same shape, and which one to ask for is the caller's business.
     """
-    request = urllib.request.Request(api_url, headers={"User-Agent": USER_AGENT})
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.load(response)
-    except (urllib.error.URLError, OSError, ValueError) as error:
-        raise FetchError(f"Couldn't reach {api_url}: {error}") from None
+    data = json_document(api_url, timeout)
     assets = {
         asset.get("name", ""): asset.get("browser_download_url")
         for asset in data.get("assets", [])
@@ -55,19 +70,42 @@ def github_release(api_url, timeout=30):
     return data.get("tag_name") or "latest", assets
 
 
-def download(url, destination, on_progress=None, timeout=60):
+def download(url, destination, on_progress=None, timeout=60, resume=False):
     """Fetch `url` to `destination`, reporting whole percentages as it goes.
+
+    With `resume`, an existing `destination` is continued rather than
+    replaced: its length becomes a Range request, and the body is appended.
+    Whatever arrived before a failure therefore stays on disk and is worth
+    something to the next attempt — which for a six-gigabyte model is the
+    difference between a retry and starting the evening again.
+
+    Nothing is renamed here. A caller that wants a partial file to be
+    distinguishable from a finished one passes the partial name and does the
+    renaming itself, because only the caller knows what "finished" means.
 
     Raises FetchError rather than the assorted URLError/OSError family, so a
     caller has one thing to catch around a download.
     """
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    existing = os.path.getsize(destination) if resume and os.path.exists(destination) else 0
+
+    headers = {"User-Agent": USER_AGENT}
+    if existing:
+        headers["Range"] = f"bytes={existing}-"
+    request = urllib.request.Request(url, headers=headers)
+
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            total = int(response.headers.get("Content-Length") or 0)
-            read = 0
-            reported = 0
-            with open(destination, "wb") as handle:
+            # A server is free to ignore the range and answer 200 with the
+            # whole file. Appending that to what we already have makes a file
+            # containing two overlapping copies and no error at all, so the
+            # only safe reading of a 200 is "start again".
+            resumed = bool(existing) and response.status == 206
+            if not resumed:
+                existing = 0
+            total = existing + int(response.headers.get("Content-Length") or 0)
+            read = existing
+            reported = (read * 100 // total) - (read * 100 // total) % PROGRESS_STEP if total else 0
+            with open(destination, "ab" if resumed else "wb") as handle:
                 while True:
                     chunk = response.read(256 * 1024)
                     if not chunk:
@@ -80,7 +118,7 @@ def download(url, destination, on_progress=None, timeout=60):
                             reported = percent - percent % PROGRESS_STEP
                             on_progress(reported)
     except (urllib.error.URLError, OSError, ValueError) as error:
-        raise FetchError(f"Couldn't download {url}: {error}") from None
+        raise FetchError(f"Couldn't download {url}: {error}", error) from None
 
 
 def check_members(names, root):
