@@ -70,17 +70,29 @@ class GpuLayers(unittest.TestCase):
     def setUp(self):
         self.q4 = models.by_id("qwen2.5-coder-7b-q4")   # 4.7GB over 28 layers
 
-    def test_the_reported_machine_lands_below_the_cliff(self):
-        layers = fit.gpu_layers(self.q4, 5.8, 8192)
-        self.assertGreater(layers, 0)
-        self.assertLess(layers, self.q4.layers,
-                        "all 28 layers is the 7 tokens/sec case")
-        self.assertGreaterEqual(layers, 20, "well short of the cliff is still most of the win")
+    def test_the_reported_machine_lands_on_the_measured_best(self):
+        # 27 of 28 measured 42.2 tokens/sec; 28 measured 6.9.
+        self.assertEqual(fit.gpu_layers(self.q4, 5.8, 8192), 27)
+
+    def test_the_partial_split_never_reaches_the_whole_model(self):
+        # The cliff by another route: a budget that divides into 28 layers
+        # must still stop at 27, because the full-offload check above is the
+        # only place allowed to say "all of it".
+        for free in (5.9, 6.0, 6.1, 6.2, 6.3, 6.4):
+            layers = fit.gpu_layers(self.q4, free, 8192)
+            self.assertNotEqual(layers, self.q4.layers,
+                                f"{free}GB free asked for every layer the slow way")
 
     def test_a_roomy_card_gets_everything(self):
         # -1 rather than a count: where it all fits, llama.cpp's own handling
         # beats our approximation of layer sizes.
         self.assertEqual(fit.gpu_layers(self.q4, 16.0, 8192), -1)
+
+    def test_everything_is_only_offered_with_room_to_spare(self):
+        # Just enough for weights, cache and scratch is not enough: that is
+        # the arrangement that measured 6.9 tokens a second.
+        barely = self.q4.weights_gb + 0.44 + fit.COMPUTE_GB + 0.1
+        self.assertNotEqual(fit.gpu_layers(self.q4, barely, 8192), -1)
 
     def test_a_card_with_nothing_free_gets_nothing(self):
         self.assertEqual(fit.gpu_layers(self.q4, 1.0, 8192), 0)
@@ -121,6 +133,22 @@ class Explain(unittest.TestCase):
         text = fit.explain("oversized")
         self.assertNotIn("/", text)
         self.assertNotIn("model to switch", text)
+
+    def test_the_startup_wording_does_not_claim_something_was_slow(self):
+        # Nothing has run yet at that point. A warning that describes an
+        # experience the user hasn't had is a warning they stop believing.
+        text = fit.explain("oversized", measured=False)
+        self.assertNotIn("was slow", text)
+        text = fit.explain("squeezed", 8.0, 2.6, measured=False)
+        self.assertNotIn("was slow", text)
+
+    def test_an_oversized_model_is_described_as_a_trade_not_a_fault(self):
+        # It measured 20 tokens a second once partial offload existed, against
+        # 0.8 before. "Runs from ordinary memory, answer in seconds" was true
+        # of the old behaviour and is a lie about this one.
+        text = fit.explain("oversized")
+        self.assertIn("part of it", text)
+        self.assertIn("works", text)
 
     def test_no_jargon_reaches_the_user(self):
         for kind in ("squeezed", "oversized"):

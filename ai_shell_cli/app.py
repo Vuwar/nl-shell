@@ -146,6 +146,23 @@ def main():
             print(result["output"] if result["output"] else "✓ Done")
 
 
+def _model_note(row):
+    """What to say about a model in the list: what it costs to switch to, and
+    whether this machine will be slower running it.
+
+    The two are separate facts and both matter. A model already downloaded is
+    a free switch even where it doesn't fit, and one that doesn't fit is no
+    longer unusable — as much of it as fits goes on the card, which is worth a
+    warning about speed but not the "too big" it used to get.
+    """
+    if row["current"]:
+        return "in use"
+    cost = "downloaded" if row["installed"] else f"{row['weights_gb']}GB download"
+    speed = {"partial": " · slower on this machine",
+             "poor": " · far too big for this machine"}.get(row["speed"], "")
+    return cost + speed
+
+
 def _model_command(argument):
     """`model` lists what this machine can run; `model 3` switches to one.
 
@@ -164,15 +181,7 @@ def _model_command(argument):
     if not argument:
         print()
         for number, row in enumerate(rows, start=1):
-            if row["current"]:
-                note = "in use"
-            elif not row["fits"]:
-                note = "too big for your card"
-            elif row["installed"]:
-                note = "downloaded"
-            else:
-                note = f"{row['weights_gb']}GB download"
-            print(f"  {number}. {row['label']:<22} {note}")
+            print(f"  {number}. {row['label']:<22} {_model_note(row)}")
         print(f"\n  Type 'model 2' to switch. Downloads are kept in {config.MODEL_DIR}.\n")
         return
 
@@ -185,7 +194,8 @@ def _model_command(argument):
         print("  That's the one already running.")
         return
     if not chosen["fits"]:
-        print(f"  {chosen['label']} is bigger than this machine can hold — it will be slow.")
+        print(f"  {chosen['label']} is bigger than your graphics card can hold, so part of it "
+              f"will run from ordinary memory — it works, just slower.")
     if not chosen["installed"]:
         print(f"  Downloading {chosen['label']} — {chosen['weights_gb']}GB, this takes a while.")
 

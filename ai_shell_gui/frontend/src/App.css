@@ -607,10 +607,10 @@
   background: linear-gradient(180deg, rgba(139, 123, 255, 0.16), rgba(139, 123, 255, 0.07));
 }
 
-/* Still legible, still explained by its own label — dimmed rather than
-   hidden, because "this exists and won't fit" is the useful message. */
+/* Held back rather than struck out. A model bigger than the card still runs —
+   the part that fits goes on the card — so this is "slower", not "no". */
 .model-row.unfit {
-  opacity: 0.45;
+  opacity: 0.72;
 }
 
 .model-row:disabled {

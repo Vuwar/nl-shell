@@ -26,7 +26,24 @@ class ModelCommand(unittest.TestCase):
         printed = out.getvalue()
         self.assertIn("1.", printed)
         self.assertIn("in use", printed)
-        self.assertIn("too big for your card", printed)
+        # A 14B or 32B on an 8GB card is not "slower", it is unusable — the
+        # distinction the speed grades exist to draw.
+        self.assertIn("far too big for this machine", printed)
+
+    def test_a_downloaded_model_says_so_even_where_it_will_be_slower(self):
+        # Both facts, not one: an already-downloaded model is a free switch,
+        # and hiding that behind "too big" made it look like a 6.3GB download.
+        out = io.StringIO()
+        with mock.patch.object(config, "HARDWARE", MACHINE), \
+             mock.patch.object(config, "installed_models",
+                               return_value={"qwen2.5-coder-7b-q6"}), \
+             mock.patch.object(config, "MODEL", "qwen2.5-coder-7b-q4"), \
+             redirect_stdout(out):
+            app._model_command("")
+        line = next(l for l in out.getvalue().splitlines() if "higher quality" in l)
+        self.assertIn("downloaded", line)
+        self.assertIn("slower", line)
+        self.assertNotIn("GB download", line)
 
     def test_a_number_switches(self):
         out = io.StringIO()

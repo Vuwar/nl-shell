@@ -1599,14 +1599,21 @@ export default function App() {
                     onClick={() => switchModel(m)}
                   >
                     <span className="model-name">{m.label}</span>
+                    {/* Two separate facts, and both matter: what switching
+                        costs, and whether this machine runs it slower. A
+                        downloaded model is a free switch even where it
+                        doesn't fit, and one that doesn't fit is no longer
+                        unusable — as much of it as fits goes on the card. */}
                     <span className="model-meta">
                       {m.current
                         ? "in use"
-                        : !m.fits
-                        ? "too big for your card"
-                        : m.installed
-                        ? "downloaded"
-                        : `${m.weights_gb}GB download`}
+                        : `${m.installed ? "downloaded" : `${m.weights_gb}GB download`}${
+                            m.speed === "partial"
+                              ? " · slower here"
+                              : m.speed === "poor"
+                              ? " · far too big"
+                              : ""
+                          }`}
                     </span>
                   </button>
                 ))}

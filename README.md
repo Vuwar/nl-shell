@@ -219,12 +219,26 @@ Two things worth knowing about how it chooses:
   across the bus a piece at a time, which is *slower* than never having touched
   the card at all.
 - **As much of the model goes on the card as fits, not all or nothing.** How
-  much is decided at each start, from what's free at that moment. On an 8GB
-  card with a browser open, one 7B measured 16.5 tokens a second entirely on
-  the processor, 45 with 27 of its 28 layers on the card, and **7** with all 28
-  — the last layer tips it past what the driver keeps resident, and everything
-  starts crossing the bus. Filling to a margin gets most of the win and can't
-  land on that cliff.
+  much is decided at each start, from what's free at that moment. Measured on
+  an 8GB card with a browser and a few other things open, running a 7B-Q4:
+
+  | layers on the card | tokens/sec |
+  |---|---|
+  | none (all processor) | 16.5 |
+  | 24 of 28 | 35.0 |
+  | 27 of 28 | 42.2 |
+  | all 28 | **6.9** |
+
+  The last layer also carries the output tensor, and asking for it tips the
+  request past what the driver will hand out — at which point *less* ends up
+  on the card, not more, and every token crosses the bus. So "all of it if it
+  fits, none of it otherwise" could only choose the top of that curve or the
+  bottom, and on this class of card it chose the bottom. Filling to a margin
+  gets most of the win and cannot land on the cliff.
+
+  This is also why a model bigger than your card is worth offering rather than
+  refusing: the same 8GB card runs a 7B-Q6 it cannot hold at about 20 tokens a
+  second, which is a trade of speed for quality rather than a wall.
 
 Every size is the same model family (Qwen2.5-Coder). That's deliberate: the
 system prompt asks for a strict JSON shape and a fair number of rules at once,
@@ -234,8 +248,9 @@ family don't, so size is safe to vary.
 ### Changing it, and why an answer was slow
 
 Type `model` in the console or open `/settings` in the window to see the whole
-list and switch. Anything too big for your machine is marked as such, and a
-model you've downloaded before switches back without downloading again.
+list and switch. Each row says what switching costs — a model downloaded once
+switches back instantly — and whether this machine runs it slower, or is too
+small for it to be worth trying at all.
 
 If an answer takes far longer than usual, the app says why rather than leaving
 you watching dots. The usual cause is something else using the graphics card —

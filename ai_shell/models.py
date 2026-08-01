@@ -97,6 +97,11 @@ MODELS = (
 
 _BY_ID = {model.id: model for model in MODELS}
 
+# How far over the memory budget a model can be while still being worth
+# offering as a trade. Past this, so little of it is on the card that the
+# answer arrives at reading speed or slower.
+_POOR_FIT_RATIO = 1.5
+
 # What the project ran before any of this existed, and what an unreadable
 # machine falls back to: the largest size an ordinary 16GB laptop handles.
 FALLBACK = _BY_ID["qwen2.5-coder-7b-q4"]
@@ -205,17 +210,25 @@ def catalog(vram_gb, ram_gb, shared=False, installed=(), current_id=None):
     budget = usable_gpu if on_gpu else usable_ram_gb(ram_gb or 0)
     ceiling = None if on_gpu else _CPU_CEILING
 
-    return [
-        {
+    rows = []
+    for model in MODELS:
+        fits = (
+            model.footprint_gb <= budget
+            and (ceiling is None or model.weights_gb <= ceiling.weights_gb)
+        )
+        # How far past the budget it is, which is the difference between "some
+        # of this runs from ordinary memory" and "almost all of it does". A
+        # 7B-Q6 a sixth over budget measured 20 tokens a second on the machine
+        # this was written for; a 32B three times over would be well under one,
+        # and calling both of them "slower" tells the user nothing.
+        over = model.footprint_gb / budget if budget else float("inf")
+        rows.append({
             "id": model.id,
             "label": model.label,
             "weights_gb": model.weights_gb,
-            "fits": (
-                model.footprint_gb <= budget
-                and (ceiling is None or model.weights_gb <= ceiling.weights_gb)
-            ),
+            "fits": fits,
+            "speed": "full" if fits else ("partial" if over <= _POOR_FIT_RATIO else "poor"),
             "installed": model.id in installed,
             "current": model.id == current_id,
-        }
-        for model in MODELS
-    ]
+        })
+    return rows

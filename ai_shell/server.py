@@ -309,7 +309,9 @@ def fit_notice():
     )
     if kind != "oversized":
         return None
-    return fit.explain(kind)
+    # measured=False: nothing has been slow yet, and saying otherwise about a
+    # session the user hasn't had is how a warning stops being believed.
+    return fit.explain(kind, measured=False)
 
 
 def switch_model(model_id, on_status=None):

@@ -47,7 +47,10 @@ class Notice(unittest.TestCase):
              mock.patch.object(config, "current_model",
                                return_value=models.by_id("qwen2.5-coder-7b-q6")):
             notice = server.fit_notice()
-        self.assertIn("too big for your graphics card", notice)
+        self.assertIn("bigger than your graphics card can hold", notice)
+        # Said before a single answer has been produced, so it must not claim
+        # one was slow.
+        self.assertNotIn("was slow", notice)
 
     def test_a_merely_busy_card_is_left_to_the_measured_check(self):
         # A model that fits an idle card but not today's free memory is a

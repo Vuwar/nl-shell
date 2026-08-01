@@ -64,3 +64,12 @@ class Catalog(unittest.TestCase):
 
     def test_every_model_gets_a_row(self):
         self.assertEqual(len(models.catalog(8.0, 32.0)), len(models.MODELS))
+
+    def test_a_little_over_budget_and_far_over_are_told_apart(self):
+        # On an 8GB card the 7B-Q6 measured 20 tokens a second with part of it
+        # on the card. A 32B three times over budget would be well under one.
+        # Describing both as "slower" tells the user nothing.
+        rows = {row["id"]: row for row in models.catalog(8.0, 32.0)}
+        self.assertEqual(rows["qwen2.5-coder-7b-q4"]["speed"], "full")
+        self.assertEqual(rows["qwen2.5-coder-7b-q6"]["speed"], "partial")
+        self.assertEqual(rows["qwen2.5-coder-32b-q4"]["speed"], "poor")
