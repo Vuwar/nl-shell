@@ -39,11 +39,13 @@ _CREATES_ITEM = re.compile(
 _OBJECT_DUMP = re.compile(r"^Mode\s+LastWriteTime\s+.*\bName\s*$", re.MULTILINE)
 
 
+# See SPAWN_KWARGS.
+_CREATE_NO_WINDOW = 0x08000000
+
 # Job-object plumbing for start_background. A job with KILL_ON_JOB_CLOSE set
 # terminates every process in it the moment the last handle to the job goes
 # away — including when that happens because the owning process died without
 # cleaning up, which is exactly the case an atexit hook can't cover.
-_CREATE_NO_WINDOW = 0x08000000
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
 _JobObjectExtendedLimitInformation = 9
 _PROCESS_SET_QUOTA = 0x0100
@@ -187,6 +189,21 @@ app they mean, ask — the fallback can only launch the app you name, so a
 wrong guess fails instead of opening something else."""
 
     # --- running commands -------------------------------------------------
+    # CREATE_NO_WINDOW, on everything this app starts.
+    #
+    # The desktop app is a windowed binary with no console of its own, so
+    # Windows gives every console child a brand new one — and on Windows 11
+    # that console is hosted by Windows Terminal, which means a full terminal
+    # window, tabs and all, appearing over the desktop. The installed-app
+    # scan runs from Session.__init__, before the panel is drawn, so without
+    # this flag the first thing a user sees after launching the app is a
+    # PowerShell window they never asked for; every confirmed command then
+    # flashes another.
+    #
+    # Costs nothing where there is a console already: the CLI's children
+    # write to captured pipes, not to the console it took the flag from.
+    SPAWN_KWARGS = {"creationflags": _CREATE_NO_WINDOW}
+
     def shell_argv(self, command):
         # The preamble is not cosmetic. Windows PowerShell writes redirected
         # output in the console's OEM codepage, so a filename or an app name
@@ -228,9 +245,9 @@ wrong guess fails instead of opening something else."""
 
     # --- background processes ----------------------------------------------
     def start_background(self, argv, log):
-        """CREATE_NO_WINDOW so a console doesn't flash over the desktop panel
-        every launch, plus a kill-on-close job object so the child can't be
-        orphaned.
+        """SPAWN_KWARGS' CREATE_NO_WINDOW so a console doesn't flash over the
+        desktop panel every launch, plus a kill-on-close job object so the
+        child can't be orphaned.
 
         Failing to build the job is not fatal. It's the safety net, not the
         mechanism — and it legitimately fails where we're already inside
@@ -242,7 +259,7 @@ wrong guess fails instead of opening something else."""
             stdout=log,
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
-            creationflags=_CREATE_NO_WINDOW,
+            **self.SPAWN_KWARGS,
         )
 
         job = None
@@ -361,7 +378,7 @@ wrong guess fails instead of opening something else."""
         try:
             result = subprocess.run(
                 self.shell_argv(script), capture_output=True, timeout=15,
-                encoding="utf-8", errors="replace",
+                encoding="utf-8", errors="replace", **self.SPAWN_KWARGS,
             )
         except Exception:
             return []

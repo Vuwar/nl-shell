@@ -40,6 +40,17 @@ class Platform:
     ABS_PATH = _NEVER
 
     # --- running commands -------------------------------------------------
+    # Extra keyword arguments for every process this app starts — the shell
+    # running a command, the app scan, the hardware probe, the model server.
+    # Nothing to say on a Unix, where a child process is just a child
+    # process; on Windows it is what keeps a console window off the user's
+    # desktop (see windows.Platform.SPAWN_KWARGS). It lives here, on the
+    # platform, because the alternative is remembering it at each call site
+    # one at a time — which is how the app scan came to open a PowerShell
+    # window in front of the panel while the background server, written with
+    # the flag, had none.
+    SPAWN_KWARGS = {}
+
     def shell_argv(self, command):
         """The argv that runs `command` in this OS's shell."""
         raise NotImplementedError
@@ -82,7 +93,8 @@ class Platform:
         This base version is the honest fallback: no link at all.
         """
         return subprocess.Popen(
-            argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL
+            argv, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            **self.SPAWN_KWARGS,
         ), None
 
     # --- directory listings ----------------------------------------------
@@ -159,7 +171,7 @@ class Platform:
         try:
             result = subprocess.run(
                 ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-                capture_output=True, timeout=10,
+                capture_output=True, timeout=10, **self.SPAWN_KWARGS,
                 # Numbers, so the encoding hardly matters — but text=True
                 # decodes strictly under the locale, and a probe that decides
                 # how much of the model goes on the GPU should not be able to
