@@ -325,13 +325,32 @@ fine.
   fall back to being asked nicely and having the answer salvaged
 - Safe commands run immediately
 - Risky commands (delete, overwrite, install, system settings, etc.) show
-  you the exact command and ask for confirmation before running
+  you the exact command and ask for confirmation before running — and let
+  you edit it first, because the model getting one path segment wrong
+  shouldn't mean retyping the whole request
+
+When you edit a command before running it, the pair — what you asked for, what
+the model wrote, what you replaced it with — is appended to
+`corrections.jsonl` in the config folder. It stays on your machine; nothing
+reads it yet, and nothing sends it anywhere. It exists so there is real data
+about where the model goes wrong on *your* computer by the time something can
+use it.
+
+Anything that looks like a credential is replaced with `[redacted]` first —
+values after `--password`, `-Token`, `--api-key` and friends, `password=` in a
+connection string, `Bearer` tokens, and long opaque hex or base64 runs. That is
+best-effort pattern matching, not a guarantee; file paths are deliberately left
+alone, because a record that scrubbed them would teach nothing.
+
+Turn it off with `AI_SHELL_CORRECTIONS=0`, or `"corrections": false` in
+`settings.json`.
 
 ## Project layout
 
 ```
 ai_shell/           core logic, no UI code — LLM calls, command execution, session state
 ai_shell/config.py  settings: environment, then settings.json, then measured defaults
+ai_shell/corrections.py  commands you edited before running, for later use as training/eval data
 ai_shell/models.py  the model list, and which one this machine should run
 ai_shell/hardware.py how much RAM and GPU memory there is
 ai_shell/runtime.py finds llama-server, and installs one when there isn't one
@@ -541,7 +560,9 @@ out of two real ones.
 - Command safety classification is done by the model's judgment, not a
   hardcoded rule list — good enough to start, not bulletproof. Don't point
   this at anything you can't afford to lose, and read the command before
-  confirming risky actions.
+  confirming risky actions. Editing one doesn't get it re-classified: it was
+  called risky once and it stays risky, which is the safe direction to be
+  wrong in.
 - No sandboxing — it runs with your full user permissions, same as opening
   a terminal yourself
 - Windows is the best-tested platform, simply because that's where it was
