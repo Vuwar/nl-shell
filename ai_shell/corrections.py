@@ -16,7 +16,8 @@ import os
 import re
 import time
 
-from ai_shell.config import CONFIG_DIR, CORRECTIONS, MODEL
+from ai_shell import config
+from ai_shell.config import CONFIG_DIR, CORRECTIONS
 from ai_shell.platforms import current
 
 PATH = os.path.join(CONFIG_DIR, "corrections.jsonl")
@@ -94,7 +95,9 @@ def record(request, suggested, corrected):
         "corrected": redact(corrected),
         # Which model produced the command that had to be fixed: an eval set
         # built from this file is worthless without knowing what it is scoring.
-        "model": MODEL,
+        # Read at call time: a record has to name the model that actually
+        # wrote the command, which the user can now change mid-session.
+        "model": config.MODEL,
         "os": current.OS_NAME,
     }
     try:

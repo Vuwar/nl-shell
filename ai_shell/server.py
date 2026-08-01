@@ -154,6 +154,10 @@ def ensure_running(on_status=None):
         # different fixes, and collapsing them loses the one that matters.
         try:
             model_path = weights.ensure(config.MODEL_REF, config.MODEL_LABEL, on_status=say)
+            # Recorded so the picker can say which models are already here
+            # without asking HuggingFace, which is a network call a settings
+            # screen shouldn't need.
+            config.remember_weights(config.MODEL, model_path)
         except weights.WeightsError as error:
             raise ServerError(str(error)) from None
 

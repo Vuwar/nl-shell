@@ -11,7 +11,7 @@ import re
 
 from openai import APIStatusError
 
-from ai_shell.config import MODEL
+from ai_shell import config
 from ai_shell.platforms import current
 
 _RULES = f"""You are a command translator for a {current.OS_NAME} AI shell.
@@ -159,7 +159,9 @@ def _complete(client, messages, max_tokens, schema=None, schema_name="response")
     global _schema_supported
 
     request = {
-        "model": MODEL,
+        # Read at call time, not bound at import: the model can change under a
+        # running process now that the interfaces can switch it.
+        "model": config.MODEL,
         "max_tokens": max_tokens,
         "temperature": 0,
         "messages": messages,

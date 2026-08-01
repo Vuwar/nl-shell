@@ -26,7 +26,8 @@ import threading
 from openai import OpenAI
 
 from ai_shell import corrections, web
-from ai_shell.config import API_KEY, BASE_URL, SUMMARY_CAVEAT
+from ai_shell import config
+from ai_shell.config import API_KEY, BASE_URL
 from ai_shell.executor import execute_command, list_apps, run_command
 from ai_shell.listing import listing_parent, resolve_listed_paths
 from ai_shell.llm import answer_from_search, ask_model, explain_failure, pick_installed_apps
@@ -352,10 +353,12 @@ class Session:
         """The small-model warning, the first time this session shows a summary
         it applies to. None once it's been said, and on a model it doesn't
         apply to (see config.SUMMARY_CAVEAT)."""
-        if not SUMMARY_CAVEAT or self._caveat_shown:
+        # Read at call time: switching to a smaller model is exactly when this
+        # starts applying, and a copy taken at import would never notice.
+        if not config.SUMMARY_CAVEAT or self._caveat_shown:
             return None
         self._caveat_shown = True
-        return SUMMARY_CAVEAT
+        return config.SUMMARY_CAVEAT
 
     def list_directory(self, path):
         """Lists `path` for the interfaces' own folder navigation — the user
