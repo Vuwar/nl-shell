@@ -23,6 +23,8 @@ path to get wrong.
 
 from dataclasses import dataclass
 
+from ai_shell import fit
+
 # Room the model needs beyond its own weights: the KV cache for the context
 # window plus llama.cpp's compute buffers. Same multiplier wherever it runs —
 # those buffers don't care whether they're in VRAM or RAM.
@@ -118,13 +120,19 @@ def _largest_fitting(budget_gb, ceiling=None):
     return fits[-1] if fits else None
 
 
-def recommend(ram_gb, vram_gb):
+def recommend(ram_gb, vram_gb, shared=False):
     """The best model this machine can hold, given probed hardware.
 
     A GPU decides it whenever it can hold something worth running: the same
     model is an order of magnitude faster on the card than in RAM, and one
     that doesn't fit gets partially offloaded, which is slower than never
     having touched the GPU because every token then crosses the bus twice.
+
+    The GPU's budget is what fit.usable_vram_gb leaves after the desktop, not
+    the card's total. Sizing against the total is what put a 7.875GB model on
+    an 8GB card that had 5.5GB of browser on it already, and a model that
+    doesn't fit is not merely a worse choice — it is several times slower than
+    the CPU it was chosen over.
 
     A GPU too small to hold even the floor model is the interesting case, and
     it isn't rare — plenty of laptops pair 32GB of RAM with a 2GB display
@@ -139,7 +147,7 @@ def recommend(ram_gb, vram_gb):
     exists precisely so that such a machine gets a working app rather than
     none.
     """
-    gpu_pick = _largest_fitting(vram_gb) if vram_gb else None
+    gpu_pick = _largest_fitting(fit.usable_vram_gb(vram_gb, shared)) if vram_gb else None
     ram_pick = _largest_fitting(usable_ram_gb(ram_gb), _CPU_CEILING) if ram_gb else None
 
     if gpu_pick and gpu_pick.weights_gb >= _FLOOR.weights_gb:
@@ -151,3 +159,38 @@ def recommend(ram_gb, vram_gb):
     if ram_gb or vram_gb:
         return MODELS[0]
     return FALLBACK
+
+
+def catalog(vram_gb, ram_gb, shared=False, installed=(), current_id=None):
+    """Every model, annotated for a picker: what fits, what's downloaded, what
+    is in use.
+
+    "Fits" is the same question recommend answers, asked per row rather than
+    resolved to a winner — the card's budget where there is a card worth using,
+    RAM under the CPU ceiling where there isn't. A machine with no GPU is not
+    offered a 32B it would take minutes per reply to run.
+
+    `installed` is a collection of model ids whose weights are already on
+    disk. It is passed in rather than worked out here because answering it
+    properly means looking at the filesystem, and this module deliberately
+    doesn't.
+    """
+    usable_gpu = fit.usable_vram_gb(vram_gb, shared) if vram_gb else 0.0
+    on_gpu = usable_gpu >= _FLOOR.footprint_gb
+    budget = usable_gpu if on_gpu else usable_ram_gb(ram_gb or 0)
+    ceiling = None if on_gpu else _CPU_CEILING
+
+    return [
+        {
+            "id": model.id,
+            "label": model.label,
+            "weights_gb": model.weights_gb,
+            "fits": (
+                model.footprint_gb <= budget
+                and (ceiling is None or model.weights_gb <= ceiling.weights_gb)
+            ),
+            "installed": model.id in installed,
+            "current": model.id == current_id,
+        }
+        for model in MODELS
+    ]

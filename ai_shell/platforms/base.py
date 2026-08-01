@@ -195,6 +195,45 @@ class Platform:
         sizes = [int(line.strip()) for line in result.stdout.splitlines() if line.strip().isdigit()]
         return max(sizes) / 1024 if sizes else None
 
+    def free_vram_gb(self):
+        """Graphics memory not currently in use, in GB, or None.
+
+        Both columns are asked for, not just the free one, because vram_gb
+        reports the largest single card and this has to be that same card's
+        free memory — the first row and the sum are both the wrong answer on a
+        machine with two GPUs.
+
+        None on AMD, on Intel, on anything without nvidia-smi, and on a probe
+        that times out. It is a reading of a moment, so nothing caches it: the
+        whole point is that a game started after launch changes the answer.
+        """
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.total,memory.free",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, timeout=10, **self.SPAWN_KWARGS,
+                encoding="utf-8", errors="replace",
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+        cards = []
+        for line in result.stdout.splitlines():
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) == 2 and all(part.isdigit() for part in parts):
+                cards.append((int(parts[0]), int(parts[1])))
+        if not cards:
+            return None
+        return max(cards)[1] / 1024
+
+    def vram_is_shared(self):
+        """Whether vram_gb is a slice of main memory rather than a card's own.
+
+        False everywhere with a discrete GPU. Apple Silicon overrides it — see
+        macos.vram_gb, which returns a fraction of RAM that macOS has already
+        reserved out, and must not be reserved out of again."""
+        return False
+
     # --- shared helpers ----------------------------------------------------
     def context_paths(self, command):
         """Every absolute path `command` names, in the order they appear."""

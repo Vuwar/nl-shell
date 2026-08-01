@@ -7,7 +7,7 @@ import threading
 
 import webview
 
-from ai_shell import Session, server, updater
+from ai_shell import Session, config, models, server, updater
 from ai_shell.config import connection_error
 
 def _frontend_root():
@@ -94,10 +94,18 @@ class Api:
             self._settled.set()
 
     def startup_status(self):
-        """{"state": starting|ready|failed, "message"} — polled by the front
-        end while it waits, so the panel can say what's taking the time."""
+        """{"state": starting|ready|failed, "message", "notice"} — polled by the
+        front end while it waits, so the panel can say what's taking the time.
+
+        `notice` is the graphics-card explanation, or None. It arrives with
+        "ready" rather than during the wait: it describes how the app will
+        behave from here, which is not something to say while it is still
+        loading and the user is already watching a progress line.
+        """
         with self._startup_lock:
-            return dict(self._startup)
+            status = dict(self._startup)
+        status["notice"] = server.fit_notice() if status["state"] == "ready" else None
+        return status
 
     def retry_startup(self):
         """Start the model server again after a start that failed.
@@ -222,6 +230,7 @@ class Api:
                 "risk": None,
                 "explanation": failure,
                 "options": [],
+                "notice": None,
                 "error": True,
             }
 
@@ -239,6 +248,8 @@ class Api:
             "explanation": data.get("explanation", ""),
             # the model occasionally puts junk here; keep only short strings
             "options": [o.strip() for o in options if isinstance(o, str) and o.strip()][:4],
+            # Why that took so long, the first time it's worth saying.
+            "notice": data.get("notice"),
         }
 
     def confirm(self, command=None):
@@ -249,6 +260,67 @@ class Api:
         reached an edit box by having been called risky.
         """
         return self.session.run_last(command)
+
+    # --- choosing a model -----------------------------------------------------
+    def list_models(self):
+        """Every model, with what this machine can hold and what's downloaded.
+
+        Rendered offline: "installed" comes from what a previous download
+        recorded in settings, because resolving a model reference means asking
+        HuggingFace, and a settings screen has to open on a train.
+        """
+        return {
+            "ok": True,
+            "models": models.catalog(
+                config.HARDWARE.get("vram_gb"),
+                config.HARDWARE.get("ram_gb"),
+                config.HARDWARE.get("vram_shared", False),
+                installed=config.installed_models(),
+                current_id=config.MODEL,
+            ),
+            # A server the user started is theirs; the model it holds is not
+            # ours to change, only to report.
+            "editable": config.MANAGED_SERVER,
+            "model_dir": config.MODEL_DIR,
+        }
+
+    def switch_model(self, model_id):
+        """Change models, downloading the new one if it isn't here yet.
+
+        The startup panel is reused for the wait, because from the front end's
+        point of view this is the app starting again — which is exactly what
+        it is: the old server is stopped and a new one comes up holding
+        something else.
+        """
+        with self._startup_lock:
+            if self._startup["state"] == "starting":
+                return {"ok": False, "reason": "Still starting — try again in a moment."}
+        if self.session._pending:
+            return {"ok": False, "reason": "There's a command waiting for your answer first."}
+
+        with self._startup_lock:
+            self._startup = {"state": "starting", "message": "Switching model…"}
+            self._settled.clear()
+
+        def swap():
+            try:
+                result = server.switch_model(
+                    model_id, on_status=lambda line: self._set_startup("starting", line)
+                )
+                if result["ok"]:
+                    self._set_startup("ready", "")
+                else:
+                    self._set_startup("failed", result["reason"])
+            except Exception as error:
+                # Same reasoning as _start_server: nobody is waiting on this
+                # thread, so an escaping exception would leave the panel on
+                # "Switching model…" with no way to find out why.
+                self._set_startup("failed", str(error))
+            finally:
+                self._settled.set()
+
+        threading.Thread(target=swap, daemon=True).start()
+        return {"ok": True}
 
     def clear(self):
         """Wipes the conversation behind a cleared screen — /clear and Esc.

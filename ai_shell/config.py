@@ -26,6 +26,7 @@ import os
 # is reached through ai_shell/__init__.py importing Session, so the package
 # object is still half-built when these run and has no attributes yet.
 import ai_shell
+import ai_shell.fit as fit
 import ai_shell.hardware as hardware
 import ai_shell.models as models
 from ai_shell.platforms import current
@@ -79,14 +80,37 @@ def _resolve():
     # Either a first run, or a model id that no longer exists because the
     # registry changed under a settings file written by an older build.
     probed = hardware.probe()
-    model = models.recommend(probed["ram_gb"], probed["vram_gb"])
+    model = models.recommend(probed["ram_gb"], probed["vram_gb"], probed.get("vram_shared", False))
     settings["model"] = model.id
     settings["hardware"] = probed
     _write_settings(settings)
     return settings, model, True
 
 
+def _oversized(model, settings):
+    """Whether the recorded model is too big for the card it was chosen for.
+
+    True only for the permanent mismatch — a card that cannot hold this model
+    however much the user closes. It is reported, never acted on: the model
+    the user has been running is not something to replace out from under them
+    because a rule changed under their settings file.
+    """
+    machine = settings.get("hardware") or {}
+    return fit.verdict(
+        model,
+        machine.get("vram_gb"),
+        None,
+        machine.get("vram_shared", False),
+    ) == "oversized"
+
+
 _SETTINGS, _MODEL, FIRST_RUN = _resolve()
+
+# Whether the model this app is about to run cannot fit the card it was chosen
+# for. Set for settings files written before the GPU budget reserved anything
+# for the desktop. Nothing is changed on the strength of it — the interfaces
+# raise it with the user, who decides.
+MODEL_OVERSIZED = _oversized(_MODEL, _SETTINGS)
 
 # What the machine was found to have, for the settings screen to show next to
 # the model list. Read back from settings rather than re-probed: this has to
@@ -171,8 +195,15 @@ CORRECTIONS = (os.environ.get("AI_SHELL_CORRECTIONS") or "").strip() != "0" and 
 # Deciding here rather than passing -1 always: llama.cpp will happily offload
 # part of a model that doesn't fit, which is slower than not offloading at all
 # because every token then crosses the bus twice.
+#
+# The budget is fit.usable_vram_gb, not the card's total, so a model recorded
+# by an older build that cannot fit runs on the CPU instead of being paged
+# across the bus. On the machine this was written for that is roughly 4 tokens
+# a second rather than 0.8 — and it makes the warning's "runs from ordinary
+# memory" literally true.
 _VRAM = HARDWARE.get("vram_gb")
-GPU_LAYERS = -1 if _VRAM and _VRAM >= _MODEL.footprint_gb else 0
+_SHARED = HARDWARE.get("vram_shared", False)
+GPU_LAYERS = -1 if _VRAM and fit.usable_vram_gb(_VRAM, _SHARED) >= _MODEL.footprint_gb else 0
 
 _ENV_BASE_URL = os.environ.get("AI_SHELL_BASE_URL")
 BASE_URL = _ENV_BASE_URL or f"http://{HOST}:{PORT}/v1"
@@ -198,18 +229,75 @@ API_KEY = "local"
 # Only for a model we chose. A name the user supplied, or a server they pointed
 # us at, could be anything at all, and warning about a 70B someone is running
 # on their own hardware would be both wrong and patronising.
-_MODEL_IS_OURS = MANAGED_SERVER and MODEL == _MODEL.id
-
-SUMMARY_CAVEAT = (
-    None
-    if not _MODEL_IS_OURS or models.summarizes_reliably(_MODEL)
-    else (
-        # The label's first half is the size ("3B — light"); the qualifier
-        # after it is for the settings screen's list, not for a sentence.
-        f"The {MODEL_LABEL.split(' — ')[0]} model this computer runs is a small one, so its "
+def _summary_caveat(model):
+    """The warning to print beside this model's reading of web results, or
+    None. A function rather than a constant because set_model changes the
+    answer: switching down to a 3B is exactly when it starts applying."""
+    if not (MANAGED_SERVER and MODEL == model.id) or models.summarizes_reliably(model):
+        return None
+    # The label's first half is the size ("3B — light"); the qualifier after
+    # it is for the settings screen's list, not for a sentence.
+    return (
+        f"The {model.label.split(' — ')[0]} model this computer runs is a small one, so its "
         f"reading of these results can be hit-or-miss — the sources are the part to trust."
     )
-)
+
+
+SUMMARY_CAVEAT = _summary_caveat(_MODEL)
+
+
+def current_model():
+    """The Model this app is running, or None when the user named one of their
+    own through AI_SHELL_MODEL and it isn't on our list."""
+    return models.by_id(MODEL)
+
+
+def set_model(model_id):
+    """Switch to `model_id`, persisting it. False if the id isn't one we know.
+
+    Every value derived from the model is recomputed here rather than left to
+    a restart, because the interfaces switch models in a running process. The
+    weights are not fetched here — that is ai_shell.server's job, on the next
+    ensure_running, which reports progress the user can watch.
+    """
+    global _MODEL, MODEL, MODEL_REF, MODEL_LABEL, GPU_LAYERS
+    global MODEL_OVERSIZED, SUMMARY_CAVEAT
+
+    model = models.by_id(model_id)
+    if not model:
+        return False
+
+    _MODEL = model
+    MODEL = model.id
+    MODEL_REF = model.ref
+    MODEL_LABEL = model.label
+    GPU_LAYERS = -1 if _VRAM and fit.usable_vram_gb(_VRAM, _SHARED) >= model.footprint_gb else 0
+    MODEL_OVERSIZED = _oversized(model, _SETTINGS)
+    SUMMARY_CAVEAT = _summary_caveat(model)
+
+    _SETTINGS["model"] = model.id
+    _write_settings(_SETTINGS)
+    return True
+
+
+def remember_weights(model_id, path):
+    """Record where a model's weights ended up, so the picker can say which
+    models are already downloaded without asking HuggingFace. Resolving a
+    reference is a network call, and a settings screen has to render on a
+    train."""
+    weights = _SETTINGS.setdefault("weights", {})
+    if weights.get(model_id) == path:
+        return
+    weights[model_id] = path
+    _write_settings(_SETTINGS)
+
+
+def installed_models():
+    """Ids whose weights are on this disk right now. The recorded path is
+    checked rather than trusted: weights are large, and the folder is the first
+    place somebody goes when a drive fills up."""
+    recorded = (_SETTINGS.get("weights") or {}).items()
+    return {model_id for model_id, path in recorded if path and os.path.exists(path)}
 
 
 def remember_runtime(tag):

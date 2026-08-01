@@ -22,6 +22,9 @@ class StubClient:
         self._replies = list(replies)
         self.calls = 0
         self.messages = []      # what was sent, for asserting on the retry
+        # What the server would report having generated. None is a backend
+        # that reports no usage at all, which the speed check has to survive.
+        self.usage_tokens = 100
         self.chat = self
         self.completions = self
 
@@ -32,7 +35,7 @@ class StubClient:
         # so a runaway loop shows up as a wrong call count rather than an
         # IndexError that says nothing about what went wrong.
         payload = self._replies.pop(0) if len(self._replies) > 1 else self._replies[0]
-        return _Response(payload)
+        return _Response(payload, self.usage_tokens)
 
 
 class DeadClient:
@@ -47,8 +50,14 @@ class DeadClient:
 
 
 class _Response:
-    def __init__(self, content):
+    def __init__(self, content, usage_tokens=100):
         self.choices = [_Choice(content)]
+        self.usage = _Usage(usage_tokens) if usage_tokens is not None else None
+
+
+class _Usage:
+    def __init__(self, completion_tokens):
+        self.completion_tokens = completion_tokens
 
 
 class _Choice:

@@ -164,6 +164,35 @@ turn. Route the easy ones cheaply and spend the big model only where it earns it
   sizing logic in `ai_shell/models.py`. Probably only worth it on machines above
   some threshold, which means the sizing code has to learn a new axis.
 
+### 1.6a Partial GPU offload ★★ · Effort M
+
+`config.GPU_LAYERS` is all-or-nothing: the whole model goes on the card or none
+of it does. When the card has room for two thirds of a model, two thirds is
+worth having — `-ngl N` takes a layer count, and the budget rule already exists
+in `ai_shell/fit.py`. What's missing is turning gigabytes into a layer count.
+
+This is the better answer for the "squeezed" case the app currently only
+explains: a user with a game running would get a usable app rather than an
+accurate apology.
+
+- **Touches:** `ai_shell/config.py`, `ai_shell/fit.py`, `ai_shell/server.py`
+- **Catch:** layer size depends on the model and the context window, and being
+  wrong high recreates the exact paging this whole feature exists to prevent.
+  It also has to be decided per *start*, not per install, since what's free
+  changes between launches.
+
+### 1.6b Streaming the reply ★★ · Effort M
+
+Both interfaces show thinking dots until the entire JSON object has arrived and
+parsed. On a slow machine that's a minute of nothing, and the wait feels far
+longer than it is. llama.cpp streams; the `explanation` field could appear as
+it's written.
+
+- **Touches:** `ai_shell/llm.py`, `ai_shell/session.py`, both interfaces
+- **Catch:** the grammar emits a JSON object, so the text has to be pulled out
+  of a half-finished one mid-stream — and the risk classification isn't known
+  until the object closes, so nothing can be *acted* on early, only shown.
+
 ### 1.7 Speculative decoding ★ · Effort S
 
 A small draft model proposing tokens that the big one verifies in parallel.

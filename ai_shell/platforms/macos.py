@@ -101,6 +101,11 @@ of opening something else."""
         # iogpu.wired_limit_pct allows by default on consumer configurations.
         return ram * 0.7 if ram else None
 
+    def vram_is_shared(self):
+        # True only where vram_gb actually returned the unified-memory share;
+        # an Intel Mac falls through to the base probe and a real card.
+        return platform.machine() == "arm64"
+
     # --- installed applications -------------------------------------------
     def list_apps(self):
         apps = []

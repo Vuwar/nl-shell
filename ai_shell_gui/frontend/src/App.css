@@ -570,6 +570,82 @@
   color: var(--text-dim);
 }
 
+/* One row per model, the same card treatment as .theme-card but laid out
+   along the row: the name matters and the size is a footnote. */
+.model-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.model-row:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.model-row:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
+}
+
+.model-row.active {
+  border-color: rgba(139, 123, 255, 0.55);
+  background: linear-gradient(180deg, rgba(139, 123, 255, 0.16), rgba(139, 123, 255, 0.07));
+}
+
+/* Still legible, still explained by its own label — dimmed rather than
+   hidden, because "this exists and won't fit" is the useful message. */
+.model-row.unfit {
+  opacity: 0.45;
+}
+
+.model-row:disabled {
+  cursor: default;
+}
+
+.model-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.model-meta {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.model-note {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* The graphics-card explanation. An aside, not a failure: bordered rather
+   than coloured, so it doesn't read as something having gone wrong. */
+.entry-notice {
+  margin: 6px 0 2px;
+  padding: 7px 10px;
+  border-left: 2px solid rgba(139, 123, 255, 0.5);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
 .volume-row {
   display: flex;
   align-items: center;

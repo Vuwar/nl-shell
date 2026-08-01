@@ -26,7 +26,8 @@ import threading
 from openai import OpenAI
 
 from ai_shell import corrections, web
-from ai_shell.config import API_KEY, BASE_URL, SUMMARY_CAVEAT
+from ai_shell import config, fit
+from ai_shell.config import API_KEY, BASE_URL
 from ai_shell.executor import execute_command, list_apps, run_command
 from ai_shell.listing import listing_parent, resolve_listed_paths
 from ai_shell.llm import answer_from_search, ask_model, explain_failure, pick_installed_apps
@@ -138,6 +139,7 @@ class Session:
         self._last_listing = []  # rows of the most recent listing, for follow-ups about them
         self._context_path = None  # the folder the session is currently "in"
         self._caveat_shown = False  # the small-model warning, said once, not every search
+        self._slow_notice_shown = False  # the graphics-card explanation, said once
         # Installed-app scan: kicked off now, in the background, so the result
         # is usually ready by the time the first vague request needs it.
         self._apps = None  # (name, launch_id) pairs
@@ -179,13 +181,16 @@ class Session:
         self._last_listing = []
         self._context_path = None
         self._caveat_shown = False
+        # Same reasoning as the caveat above: a warning cleared off the screen
+        # before it was read may as well not have been said.
+        self._slow_notice_shown = False
 
     def translate(self, user_input):
         """Sends user_input to the model, records it in history, and returns
         {"command", "search", "risk", "explanation", "options"}. If a command
         or a search comes back, it's stashed as pending so a later run_last()
         can carry it out."""
-        data = ask_model(self.client, user_input, self.history)
+        data, rate = ask_model(self.client, user_input, self.history)
 
         command = data.get("command")
         # One job per turn. The prompt says so, but a model that fills in two
@@ -213,7 +218,36 @@ class Session:
             self._pending = {"search": search, "hint": user_input}
         else:
             self._pending = None
+
+        data["notice"] = self._slow_notice(rate)
         return data
+
+    def _slow_notice(self, rate):
+        """Why that answer took so long, said once per session, or None.
+
+        Free memory is re-read here rather than taken from the reading
+        ai_shell.server made at startup — the whole reason this check exists
+        alongside that one is that a game started since then changes the
+        answer, and a stale number would describe the machine as it was before
+        the thing that made it slow.
+        """
+        if self._slow_notice_shown or rate is None or rate >= fit.SLOW_TOKENS_PER_SEC:
+            return None
+        total = config.HARDWARE.get("vram_gb")
+        if not total:
+            # No card: this machine is slow by nature, not by contention.
+            # There would be nothing to close, so the message would be a lie.
+            return None
+        model = config.current_model()
+        if not model:
+            return None
+        free = current.free_vram_gb()
+        kind = fit.verdict(model, total, free, config.HARDWARE.get("vram_shared", False))
+        if not kind:
+            # Slow for a reason we can't see. A guess is worse than silence.
+            return None
+        self._slow_notice_shown = True
+        return fit.explain(kind, total, free)
 
     def _grounded_options(self, user_input, data):
         """Swaps the model's generic app suggestions ("Google Chrome") for
@@ -352,10 +386,12 @@ class Session:
         """The small-model warning, the first time this session shows a summary
         it applies to. None once it's been said, and on a model it doesn't
         apply to (see config.SUMMARY_CAVEAT)."""
-        if not SUMMARY_CAVEAT or self._caveat_shown:
+        # Read at call time: switching to a smaller model is exactly when this
+        # starts applying, and a copy taken at import would never notice.
+        if not config.SUMMARY_CAVEAT or self._caveat_shown:
             return None
         self._caveat_shown = True
-        return SUMMARY_CAVEAT
+        return config.SUMMARY_CAVEAT
 
     def list_directory(self, path):
         """Lists `path` for the interfaces' own folder navigation — the user

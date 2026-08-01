@@ -212,11 +212,33 @@ Two things worth knowing about how it chooses:
   the same as being usable. CPU inference is bound by memory bandwidth, so a
   14B answers at a couple of tokens a second and a 32B at well under one —
   which for a shell prompt is the same as not working.
+- **The card's memory isn't all yours.** Your desktop, your compositor and a
+  browser are holding some of it before this app opens anything, so the budget
+  is what's left after a share is set aside for them. Sizing against the card's
+  full capacity looks fine and isn't: a model that doesn't quite fit gets paged
+  across the bus a piece at a time, which is *slower* than never having touched
+  the card at all.
 
 Every size is the same model family (Qwen2.5-Coder). That's deliberate: the
 system prompt asks for a strict JSON shape and a fair number of rules at once,
 and families differ a lot in how reliably they hold that. Sizes within a
 family don't, so size is safe to vary.
+
+### Changing it, and why an answer was slow
+
+Type `model` in the console or open `/settings` in the window to see the whole
+list and switch. Anything too big for your machine is marked as such, and a
+model you've downloaded before switches back without downloading again.
+
+If an answer takes far longer than usual, the app says why rather than leaving
+you watching dots. The usual cause is something else using the graphics card —
+a game, or a browser with a lot of tabs — and closing it is the whole fix.
+Where the model is simply too big for the card it was picked for, switching to
+a smaller one is; the app will say which of the two it is.
+
+Nothing is changed on your behalf either way. Being told your card is full and
+being moved onto a different model without asking are not the same thing, and
+the second is not the app's decision to make.
 
 ### The download, and losing your connection halfway through it
 

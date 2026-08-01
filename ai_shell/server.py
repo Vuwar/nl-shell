@@ -34,6 +34,8 @@ import urllib.error
 import urllib.request
 
 from ai_shell import config
+from ai_shell import fit
+from ai_shell import models
 from ai_shell import runtime
 from ai_shell import weights
 from ai_shell.platforms import current
@@ -58,6 +60,11 @@ _process = None
 _keepalive = None  # whatever ties the child's life to ours; must stay referenced
 _log = None
 _lock = threading.Lock()
+
+# What the card had free just before we loaded anything onto it. Sampled there
+# and nowhere else: once llama-server is up, our own weights are most of what
+# is "in use", and the reading stops describing the user's other programs.
+_free_vram_at_start = None
 
 
 class ServerError(RuntimeError):
@@ -154,8 +161,19 @@ def ensure_running(on_status=None):
         # different fixes, and collapsing them loses the one that matters.
         try:
             model_path = weights.ensure(config.MODEL_REF, config.MODEL_LABEL, on_status=say)
+            # Recorded so the picker can say which models are already here
+            # without asking HuggingFace, which is a network call a settings
+            # screen shouldn't need.
+            config.remember_weights(config.MODEL, model_path)
         except weights.WeightsError as error:
             raise ServerError(str(error)) from None
+
+        # Before the process starts, and only here: ~45ms on a thread that is
+        # about to spend the better part of a minute loading weights, behind a
+        # window that has already opened. Afterwards the reading would be
+        # mostly our own model and would describe nothing.
+        global _free_vram_at_start
+        _free_vram_at_start = current.free_vram_gb()
 
         try:
             # Appended to, not truncated: when a start fails and the user
@@ -203,6 +221,59 @@ def _wait_until_ready():
 
     stop()
     raise _fail(f"The model server didn't become ready within {READY_TIMEOUT // 60} minutes.")
+
+
+def fit_notice():
+    """One sentence about why this machine will be slow, or None.
+
+    Read by both interfaces once the server is up. None is the common case and
+    the quiet one — a machine with no card, an unreadable card, or a model
+    that fits gets no message at all.
+    """
+    model = config.current_model()
+    if not model:
+        return None  # a model the user named; not ours to have an opinion about
+    kind = fit.verdict(
+        model,
+        config.HARDWARE.get("vram_gb"),
+        _free_vram_at_start,
+        config.HARDWARE.get("vram_shared", False),
+    )
+    if not kind:
+        return None
+    return fit.explain(kind, config.HARDWARE.get("vram_gb"), _free_vram_at_start)
+
+
+def switch_model(model_id, on_status=None):
+    """Change the model this app runs, fetching its weights if they aren't
+    here yet. {"ok": True} once the new server is answering.
+
+    Stopping the old server first is what makes this safe: the weights of two
+    models will not fit the memory that couldn't hold one.
+    """
+    if not config.MANAGED_SERVER:
+        return {
+            "ok": False,
+            "reason": (
+                "This app is using a model server you started yourself, "
+                "so the model is your own to choose."
+            ),
+        }
+    if not models.by_id(model_id):
+        return {"ok": False, "reason": "That isn't a model this app knows."}
+    if model_id == config.MODEL:
+        return {"ok": True}
+
+    stop()
+    config.set_model(model_id)
+    try:
+        ensure_running(on_status=on_status)
+    except ServerError as error:
+        # The choice is left pointing at the new model on purpose: the failure
+        # is nearly always a half-finished download, and the retry has to
+        # resume that one rather than reinstating the old model.
+        return {"ok": False, "reason": str(error)}
+    return {"ok": True}
 
 
 def stop():
