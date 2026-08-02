@@ -32,7 +32,7 @@ class Startup(unittest.TestCase):
         """
         calls = []
 
-        def ensure_running(on_status=None):
+        def ensure_running(on_status=None, on_progress=None):
             outcome = outcomes[min(len(calls), len(outcomes) - 1)]
             calls.append(outcome)
             if gate is not None and len(calls) > 1:

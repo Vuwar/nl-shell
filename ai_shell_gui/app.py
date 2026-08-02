@@ -55,6 +55,11 @@ class Api:
         # first and says what it's waiting for; anything typed in the meantime
         # is held by submit() until the server answers.
         self._startup = {"state": "starting", "message": "Starting the model…"}
+        # The same start, as numbers rather than a sentence. Kept beside the
+        # message rather than inside it because the two move at different
+        # rates: the message changes once a percent, this several times a
+        # second. None whenever there is nothing worth drawing.
+        self._progress = None
         self._startup_lock = threading.Lock()
         self._settled = threading.Event()  # set once the server is up or has failed
         threading.Thread(target=self._start_server, daemon=True).start()
@@ -80,10 +85,24 @@ class Api:
     def _set_startup(self, state, message):
         with self._startup_lock:
             self._startup = {"state": state, "message": message}
+            if state == "ready":
+                self._progress = None
+            elif state == "failed" and self._progress:
+                # Kept, not cleared: the grid freezes where it stopped, which
+                # is the one moment the user is owed a picture of how far it
+                # got. Only the phase changes.
+                self._progress = dict(self._progress, phase="failed")
+
+    def _set_progress(self, payload):
+        with self._startup_lock:
+            self._progress = payload
 
     def _start_server(self):
         try:
-            server.ensure_running(on_status=lambda line: self._set_startup("starting", line))
+            server.ensure_running(
+                on_status=lambda line: self._set_startup("starting", line),
+                on_progress=self._set_progress,
+            )
             self._set_startup("ready", "")
         except Exception as error:
             # Including the unexpected ones: this runs in a thread nobody is
@@ -94,16 +113,23 @@ class Api:
             self._settled.set()
 
     def startup_status(self):
-        """{"state": starting|ready|failed, "message", "notice"} - polled by the
-        front end while it waits, so the panel can say what's taking the time.
+        """{"state": starting|ready|failed, "message", "notice", "progress"} -
+        polled by the front end while it waits, so the panel can say what's
+        taking the time.
 
         `notice` is the graphics-card explanation, or None. It arrives with
         "ready" rather than during the wait: it describes how the app will
         behave from here, which is not something to say while it is still
         loading and the user is already watching a progress line.
+
+        `progress` is the weights download as numbers, or None when there is
+        nothing worth drawing - which covers most of what a start does. The
+        install screen is for the one wait that takes minutes, not for every
+        wait.
         """
         with self._startup_lock:
             status = dict(self._startup)
+            status["progress"] = self._progress
         # Claimed through the session so this and the slow-answer explanation
         # can't both land: they are the same sentence about the same card, and
         # hearing it twice with two different numbers reads as a broken app.
@@ -130,6 +156,7 @@ class Api:
             if self._startup["state"] != "failed":
                 return {"ok": False}  # already running, or already retrying
             self._startup = {"state": "starting", "message": "Starting the model…"}
+            self._progress = None
             self._settled.clear()
         threading.Thread(target=self._start_server, daemon=True).start()
         return {"ok": True}
