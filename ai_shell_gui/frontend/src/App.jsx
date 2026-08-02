@@ -48,6 +48,10 @@ const SOUND_THEMES = {
 
 const DEFAULT_SETTINGS = { soundTheme: "glass", volume: 0.5, minimizeOnBlur: true };
 
+// The bottom of the opacity slider. Mirrors ai_shell.config.MIN_OPACITY, which
+// clamps whatever this sends anyway - this is only where the track starts.
+const MIN_OPACITY = 30;
+
 function loadSettings() {
   try {
     return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem("aishell.settings") || "{}") };
@@ -876,6 +880,10 @@ export default function App() {
   // when that screen opens rather than at startup: it reads the filesystem,
   // and nothing needs it until somebody is looking at it.
   const [modelList, setModelList] = useState({ models: [], editable: true, model_dir: "" });
+  // How see-through the window is, 30-100. Python owns this one rather than
+  // localStorage: it is a native window property, applied before this page
+  // exists so the panel doesn't flash solid on every launch. Null until read.
+  const [opacity, setOpacity] = useState(null);
   const [selIdx, setSelIdx] = useState(0);
   // Everything the user has sent, oldest first, for Up/Down recall.
   const sent = useRef([]);
@@ -915,6 +923,40 @@ export default function App() {
     if (view !== "settings" || !window.pywebview) return;
     window.pywebview.api.list_models().then(setModelList).catch(() => {});
   }, [view]);
+
+  // Read once the bridge exists. The window is already at this opacity - this
+  // is the slider catching up with it, and the CSS below dressing to match.
+  useEffect(() => {
+    const load = () => window.pywebview.api.opacity().then(setOpacity).catch(() => {});
+    if (window.pywebview) {
+      load();
+      return;
+    }
+    window.addEventListener("pywebviewready", load);
+    return () => window.removeEventListener("pywebviewready", load);
+  }, []);
+
+  // The panel's own glass is thinned to match. Below full opacity the sheen
+  // gradient is sitting on top of somebody's wallpaper rather than on a dark
+  // panel, where it reads as a smear.
+  useEffect(() => {
+    if (opacity == null) return;
+    document.documentElement.style.setProperty("--panel-alpha", opacity / 100);
+  }, [opacity]);
+
+  // Dragging: the window follows every frame, nothing is written down. The
+  // value the user lets go of is the only one worth keeping, and set_opacity
+  // on the change event is what keeps a drag off the disk.
+  function dragOpacity(percent) {
+    setOpacity(percent);
+    if (!window.pywebview) return;
+    window.pywebview.api.preview_opacity(percent).catch(() => {});
+  }
+
+  function saveOpacity(percent) {
+    if (!window.pywebview) return;
+    window.pywebview.api.set_opacity(percent).then(setOpacity).catch(() => {});
+  }
 
   function updatePrefs(partial) {
     const next = { ...prefs, ...partial };
@@ -1583,6 +1625,23 @@ export default function App() {
                   <span className="switch-knob" />
                 </span>
               </button>
+              <div className="settings-label">Opacity</div>
+              <div className="volume-row">
+                <input
+                  type="range"
+                  min={MIN_OPACITY}
+                  max="100"
+                  value={opacity ?? 100}
+                  style={{
+                    "--fill": `${(((opacity ?? 100) - MIN_OPACITY) / (100 - MIN_OPACITY)) * 100}%`,
+                  }}
+                  onChange={(e) => dragOpacity(Number(e.target.value))}
+                  onMouseUp={(e) => saveOpacity(Number(e.target.value))}
+                  onKeyUp={(e) => saveOpacity(Number(e.target.value))}
+                  onMouseDown={keepGesture}
+                />
+                <span className="volume-value">{opacity ?? 100}%</span>
+              </div>
               <div className="settings-label">Model</div>
               {modelList.editable === false && (
                 <div className="model-note">

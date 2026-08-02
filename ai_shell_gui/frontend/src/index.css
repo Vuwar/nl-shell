@@ -21,6 +21,11 @@
     rgba(255, 255, 255, 0.012) 60%,
     rgba(139, 123, 255, 0.04) 100%
   );
+  /* How opaque the OS window is, 0-1, mirrored from ai_shell.config.OPACITY by
+     App.jsx. The window itself is what fades - this exists so the panel's own
+     glass can be dressed to suit. 1 until that value has been read back. */
+  --panel-alpha: 1;
+
   --edge-highlight: rgba(255, 255, 255, 0.22);
   --border-glass: rgba(255, 255, 255, 0.14);
   --border-glass-hover: rgba(255, 255, 255, 0.22);

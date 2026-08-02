@@ -18,8 +18,13 @@
   background: var(--glass-tint), var(--glass-base);
   /* Edge lines are invisible at rest - the panel reads as a borderless glass
      slab - and only light up while the input is focused. Border stays 1px so
-     nothing shifts when it appears. */
-  border: 1px solid transparent;
+     nothing shifts when it appears.
+
+     Except when the window is see-through: an invisible edge against a dark
+     desktop is a borderless slab, and against a photograph it's a panel with
+     no edge at all. The fainter the window, the more edge it gets back. At
+     full opacity this is exactly transparent, as before. */
+  border: 1px solid rgba(255, 255, 255, calc((1 - var(--panel-alpha)) * 0.2));
   box-shadow: none;
   /* clip, not hidden: `hidden` still makes this a scroll container, and the
      panel has somewhere to scroll to (the sheen parks itself 900px off to the
@@ -78,8 +83,12 @@
   transition: opacity 350ms ease;
 }
 
+/* Faded out as the window goes see-through: the highlight is meant to read as
+   light bending through glass, and over somebody's wallpaper rather than a
+   dark panel it reads as a smudge on the screen. Gone by the bottom of the
+   slider (30%), untouched at the top. */
 .panel:hover::before {
-  opacity: 1;
+  opacity: calc((var(--panel-alpha) - 0.3) / 0.7);
 }
 
 .panel.focused {

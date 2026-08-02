@@ -350,6 +350,32 @@ class Api:
         session checks it's really a web address before handing it to the OS."""
         return self.session.open_url(url)
 
+    def opacity(self):
+        """How see-through the window is, as a percentage - what the settings
+        slider starts at."""
+        return config.OPACITY
+
+    def preview_opacity(self, percent):
+        """Move the window to `percent` without recording it.
+
+        This is a slider being dragged, so it arrives once per frame. Writing
+        settings.json at that rate would be a lot of disk for a number that
+        isn't final yet, and the value the user lets go of is the only one
+        worth keeping."""
+        applied = config._clamp_opacity(percent)
+        if self._window:
+            _set_window_opacity(self._window, applied)
+        return applied
+
+    def set_opacity(self, percent):
+        """Move the window to `percent` and keep it there across restarts -
+        the slider being let go of. Returns the value actually applied, which
+        is the clamped one."""
+        applied = config.set_opacity(percent)
+        if self._window:
+            _set_window_opacity(self._window, applied)
+        return applied
+
     def quit(self):
         """Close the window - the JS side calls this for a bare "exit".
 
@@ -435,7 +461,12 @@ def main():
         background_color="#12101a",
     )
     api._window = window
-    window.events.shown += lambda: _apply_window_chrome(window)
+
+    def _dress(window=window):
+        _apply_window_chrome(window)
+        _set_window_opacity(window, config.OPACITY)
+
+    window.events.shown += _dress
     # private_mode defaults to True, which wipes localStorage on every run -
     # the settings screen persists its choices there. Turning it off is also
     # what makes the port explicit rather than optional; see _free_port.
@@ -488,22 +519,59 @@ def _resize_window(window, width, height):
         window.resize(width, height)
 
 
-# 0-255. WebView2 can't do per-pixel desktop transparency (tested: transparent
-# pixels composite against the control's own background, and DWM acrylic never
-# shows through), but a layered window CAN be uniformly translucent - the
-# closest to liquid glass this stack allows. ~86% opaque keeps text readable.
-WINDOW_ALPHA = 220
+def _set_window_opacity(window, percent):
+    """Make the whole window `percent` opaque, text included.
+
+    WebView2 can't do per-pixel desktop transparency (tested: transparent
+    pixels composite against the control's own background, and DWM acrylic
+    never shows through), but a layered window CAN be uniformly translucent -
+    the closest to liquid glass this stack allows. It was a fixed 86% until
+    the settings screen grew a slider for it.
+
+    Each backend keeps its window somewhere different, and none of them expose
+    this through pywebview's own API. Best-effort like the rest of the native
+    code here: a backend whose internals have moved leaves a solid window,
+    which is a disappointing setting rather than a broken app.
+    """
+    fraction = max(0.05, min(1.0, percent / 100))
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            from webview.platforms.winforms import BrowserView
+
+            hwnd = BrowserView.instances[window.uid].Handle.ToInt32()
+            GWL_EXSTYLE, WS_EX_LAYERED, LWA_ALPHA = -20, 0x80000, 0x2
+            user32 = ctypes.windll.user32
+            # The style is re-applied on every change rather than once at
+            # startup: the alpha means nothing without it, and asking twice
+            # costs nothing.
+            style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED)
+            user32.SetLayeredWindowAttributes(hwnd, 0, round(255 * fraction), LWA_ALPHA)
+        elif sys.platform == "darwin":
+            from webview.platforms.cocoa import BrowserView
+
+            BrowserView.instances[window.uid].window.setAlphaValue_(fraction)
+        else:
+            from webview.platforms.gtk import BrowserView
+
+            # Needs a running compositor. Without one the call is accepted and
+            # simply does nothing, which is the same outcome as the except below.
+            BrowserView.instances[window.uid].window.set_opacity(fraction)
+    except Exception:
+        pass
 
 
 def _apply_window_chrome(window):
-    """Round + translucent native window (Windows 11).
+    """Rounded native window (Windows 11).
 
     Frameless WinForms windows keep square corners by default, so the CSS
     panel's rounded outline used to sit inside a square dark window - the
     visible dark slivers at each corner. DWMWA_WINDOW_CORNER_PREFERENCE=ROUND
     makes the OS clip (and shadow) the window itself with antialiased rounded
-    corners, so the panel can fill the window edge-to-edge. WS_EX_LAYERED with
-    LWA_ALPHA then lets the desktop faintly show through the whole window.
+    corners, so the panel can fill the window edge-to-edge. Translucency is
+    _set_window_opacity's job, and it runs on every platform.
 
     Windows-only, and little is missing elsewhere: macOS rounds and shadows a
     frameless window itself, and on Linux that's the window manager's business
@@ -512,8 +580,6 @@ def _apply_window_chrome(window):
     if sys.platform != "win32":
         return
     try:
-        import ctypes
-
         from webview.platforms.winforms import BrowserView, DwmSetWindowAttribute
 
         hwnd = BrowserView.instances[window.uid].Handle.ToInt32()
@@ -522,12 +588,6 @@ def _apply_window_chrome(window):
         # Windows draws its own thin border line around rounded windows; hide
         # it (DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE) - focus glow is done in CSS.
         DwmSetWindowAttribute(hwnd, 34, 0xFFFFFFFE)
-
-        GWL_EXSTYLE, WS_EX_LAYERED, LWA_ALPHA = -20, 0x80000, 0x2
-        user32 = ctypes.windll.user32
-        style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED)
-        user32.SetLayeredWindowAttributes(hwnd, 0, WINDOW_ALPHA, LWA_ALPHA)
     except Exception:
         pass  # older pywebview or Windows 10: square opaque corners, still functional
 

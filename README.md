@@ -179,7 +179,8 @@ they mean nobody has paid a certificate authority about it.
    another app and it folds down to a small tile - still showing whether
    anything is running, or finished while you were away - and unfolds exactly
    as you left it when you click the tile or give it focus again. `/settings`
-   turns that off if you'd rather it stayed put.
+   turns that off if you'd rather it stayed put, and has an opacity slider for
+   how much of your desktop shows through the window.
 
    The build it fetches follows the same decision as the model size: Vulkan
    when the model will be offloaded to a GPU, CPU-only otherwise. Vulkan
@@ -292,6 +293,7 @@ To override any of it:
 | `AI_SHELL_CONTEXT` | Context window in tokens (default 8192) |
 | `AI_SHELL_BASE_URL` | Use a server you started yourself, and don't start one |
 | `AI_SHELL_MODEL` | The model name sent in API calls - only matters with `AI_SHELL_BASE_URL` |
+| `AI_SHELL_OPACITY` | How opaque the desktop window is, 30-100 (default 92). Window only; the console ignores it |
 
 The persistent version of the same choices lives in `settings.json`, in
 `%APPDATA%\ai-shell\` on Windows and `~/.config/ai-shell/` elsewhere. Delete

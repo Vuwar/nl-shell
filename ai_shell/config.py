@@ -44,6 +44,34 @@ DEFAULT_PORT = 8080
 # budgeted for, so it isn't scaled up on big machines.
 DEFAULT_CONTEXT = 8192
 
+# How opaque the desktop window is, as a percentage. 92 is a panel that reads
+# as glass over a wallpaper without anyone having to go looking for the
+# setting. The floor is well below what's comfortable to read on purpose: how
+# see-through is too see-through depends on the wallpaper, and the slider that
+# sets this lives in a settings screen the user can always get back to.
+DEFAULT_OPACITY = 92
+MIN_OPACITY = 30
+
+
+def _clamp_opacity(raw):
+    """`raw` as a whole percent inside the allowed range.
+
+    Anything that isn't a number is the default rather than an error: this
+    reads a slider position out of a JSON file the user is free to edit, and
+    a window that refuses to open over a typo is worse than a window at 92%.
+    """
+    try:
+        value = round(float(raw))
+    except (TypeError, ValueError):
+        return DEFAULT_OPACITY
+    return max(MIN_OPACITY, min(100, value))
+
+
+def _opacity_setting(environ, settings):
+    """The opacity to open at - an environment override first, then what the
+    settings screen last wrote, then the default."""
+    return _clamp_opacity(environ.get("AI_SHELL_OPACITY") or settings.get("opacity"))
+
 
 def _read_settings():
     try:
@@ -160,6 +188,12 @@ SERVER_BINARY_EXPLICIT = bool(_NAMED_SERVER)
 # Which llama.cpp release was installed for us, if any. Recorded so the engine
 # isn't silently swapped underneath the user on some later launch.
 RUNTIME_RELEASE = _SETTINGS.get("llama_cpp_release")
+
+# --- the desktop window ---------------------------------------------------
+# Read by ai_shell_gui before the window is shown. It has to be settled that
+# early: applying it after the first paint is a visible flash of solid panel
+# on every launch. The CLI ignores it.
+OPACITY = _opacity_setting(os.environ, _SETTINGS)
 
 # --- updating the app itself ----------------------------------------------
 # What this build calls itself, for ai_shell.updater to compare against the
@@ -315,6 +349,18 @@ def installed_models():
         if (path and os.path.exists(path)) or weights.present(model.ref):
             found.add(model.id)
     return found
+
+
+def set_opacity(percent):
+    """Record how see-through the window should be, and return the value that
+    was actually stored - which is the clamped one, so that the window and the
+    settings file can't end up disagreeing."""
+    global OPACITY
+
+    OPACITY = _clamp_opacity(percent)
+    _SETTINGS["opacity"] = OPACITY
+    _write_settings(_SETTINGS)
+    return OPACITY
 
 
 def remember_runtime(tag):
