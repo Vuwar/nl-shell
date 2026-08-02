@@ -107,6 +107,7 @@ To override any of it:
 | `AI_SHELL_BASE_URL` | Use a server you started yourself, and don't start one |
 | `AI_SHELL_MODEL` | The model name sent in API calls - only matters with `AI_SHELL_BASE_URL` |
 | `AI_SHELL_OPACITY` | How opaque the desktop window is, 30-100 (default 92). Window only; the console ignores it |
+| `AI_SHELL_IDLE_UNLOAD` | Minutes of quiet before the graphics card is handed back (default 5). `0` keeps the model loaded |
 
 The persistent version of the same choices lives in `settings.json`, in
 `%APPDATA%\ai-shell\` on Windows and `~/.config/ai-shell/` elsewhere. Delete
@@ -120,6 +121,27 @@ of its own:
 set AI_SHELL_BASE_URL=http://localhost:11434/v1
 set AI_SHELL_MODEL=qwen2.5-coder:7b
 ```
+
+### Giving the card back
+
+The model is only in your graphics card while you're using it. After five
+minutes without a question the app stops the model server, and the card gets
+its several gigabytes back. If something else wants the card sooner - a game,
+usually - it goes sooner: a gigabyte disappearing from the card counts as
+somebody needing it, and thirty seconds of quiet is enough to believe it.
+
+The next thing you type starts it again. That costs about four seconds, once,
+because the weights come back from the operating system's file cache rather
+than from the disk. You see the same thinking dots as always; nothing
+reconnects and nothing is announced.
+
+Waking measures the card first, which is the reason the whole server is
+stopped rather than asked to sleep. Alt-tab out of a game to ask something and
+it loads as much of the model as there is room for, running the rest on the
+processor - a slower answer, instead of taking memory back from the game.
+
+`idle_unload_minutes` in `settings.json` changes the five minutes, and `0`
+keeps the model loaded for as long as the app is open.
 
 ## Looking things up on the web
 
