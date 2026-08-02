@@ -942,6 +942,19 @@ export default function App() {
   if (install) lastInstall.current = install;
   const shownInstall = install || (leaving ? lastInstall.current : null);
 
+  // Folded, the tile is all there is, and a download it can only draw as a
+  // ring moves too slowly to look like anything is happening. Every brick
+  // that lands behind the fold gets a beat out of the dots, so the tile is
+  // working rather than sitting there for two minutes.
+  const landed = shownInstall ? Math.floor(shownInstall.filled) : 0;
+  const [tileBeat, setTileBeat] = useState(false);
+  useEffect(() => {
+    if (!landed) return undefined;
+    setTileBeat(true);
+    const timer = setTimeout(() => setTileBeat(false), 460); // tileBeat
+    return () => clearTimeout(timer);
+  }, [landed]);
+
   // Settings view: Esc closes it; returning to the shell refocuses the input.
   useEffect(() => {
     if (view === "settings") {
@@ -1872,7 +1885,7 @@ export default function App() {
             at the tile says whether anything is still running. */}
         <button
           type="button"
-          className="mini-orb"
+          className={`mini-orb${tileBeat ? " beat" : ""}`}
           tabIndex={minimized ? 0 : -1}
           aria-hidden={!minimized}
           title="Open - or drag to move it"

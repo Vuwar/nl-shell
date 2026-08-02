@@ -216,10 +216,14 @@
    Drawn on the panel, shown only while it is folded. Mounted rather than
    swapped in, so there is nothing to mount at the moment the window is
    already busy animating its own size. */
+/* Stretched to the panel rather than sized in pixels: the tile's own box is
+   what the ring has to trace, and that box is the panel less its border. A
+   fixed 48px lost its bottom and right edges to the overflow clip. */
 .tile-ring {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   opacity: 0;
   transition: opacity 220ms ease;
@@ -232,14 +236,41 @@
 /* Faint, but not invisible. At 8% white this read as nothing at all against
    the panel, which left the filled arc looking like a smudge rather than a
    fraction of something. */
+/* non-scaling-stroke: the viewBox is stretched to whatever the tile measures,
+   and without this the line thins or thickens with it. */
 .tile-ring-track {
   stroke: rgba(255, 255, 255, 0.14);
   stroke-width: 2;
+  vector-effect: non-scaling-stroke;
 }
 
 .tile-ring-fill {
   stroke: var(--accent);
   stroke-width: 2;
   stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
   transition: stroke-dashoffset 300ms linear;
+}
+
+/* A brick landed while the window was folded. The beat goes on the row, not
+   on the dots: they already carry dotJump, and a second animation on the same
+   transform would simply replace it. So the three of them surge together,
+   which is the right shape anyway - one brick, one beat. */
+.mini-orb.beat .thinking-dots {
+  animation: tileBeat 460ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes tileBeat {
+  0% { transform: scale(1); filter: none; }
+  30% {
+    transform: scale(1.18);
+    filter: brightness(1.5) drop-shadow(0 0 6px var(--accent-soft));
+  }
+  100% { transform: scale(1); filter: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mini-orb.beat .thinking-dots {
+    animation: none;
+  }
 }
