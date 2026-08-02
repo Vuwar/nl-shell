@@ -13,9 +13,14 @@
 // to the padding box - inside that border - so a hard-coded 48 starts a pixel
 // in and loses its last pixel to the panel's overflow clip. Bottom and right
 // simply vanish.
+// Half the stroke, so the line's outer edge lands on the box's own edge and
+// the ring reads as the tile's border lighting up rather than a smaller ring
+// drawn inside it. Safe now that the viewBox is stretched to the box rather
+// than assuming 48px: it was the fixed size that lost the bottom and right,
+// not the inset.
 const BOX = 48;
-const INSET = 2;          // clear of the border and its rounding, at any scale
-const RADIUS = 8;         // --radius (10px) less the inset
+const INSET = 1;
+const RADIUS = 9;         // --radius (10px) less the inset
 
 export default function TileRing({ percent, title }) {
   const shown = Math.max(0, Math.min(100, percent));
