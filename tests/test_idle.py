@@ -8,6 +8,7 @@ that fails on a slow machine.
 import unittest
 
 from ai_shell import idle
+from tests.stubs import forget_idle
 
 
 class Policy(unittest.TestCase):
@@ -19,7 +20,9 @@ class Policy(unittest.TestCase):
 
         idle._clock = lambda: self.now
         self.addCleanup(setattr, idle, "_clock", idle.time.monotonic)
-        self.addCleanup(idle.park)
+        # This module's state outlives the test that set it, and the callbacks
+        # left behind would be called by the next file's model calls.
+        self.addCleanup(forget_idle)
 
     def wake(self):
         self.woke += 1

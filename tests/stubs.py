@@ -14,6 +14,28 @@ with a status code, and the tests drive the recovery from there.
 
 import urllib.error
 
+from ai_shell import idle
+
+
+def forget_idle():
+    """Put ai_shell.idle back the way an app that never started a server
+    leaves it.
+
+    Module state, and therefore shared by every test file in one run. A test
+    that starts a real watch leaves callbacks behind that point at the real
+    server, and a later test elsewhere doing nothing more exotic than asking
+    the stub model a question then goes through idle.active(), finds the
+    server "released", and tries to start llama-server for real. That is how
+    this was found: two tests failing in files that know nothing about idling.
+    """
+    idle.park()          # ends the watchdog thread, if this run started one
+    idle._wake = None
+    idle._release = None
+    idle._pressure = None
+    idle._idle_seconds = 0
+    idle._in_flight = 0
+    idle._released = False
+
 
 class StubClient:
     """Returns `replies` in order, one per call, and counts the calls."""

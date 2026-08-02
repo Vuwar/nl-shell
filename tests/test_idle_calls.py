@@ -5,9 +5,13 @@ from unittest import mock
 
 from ai_shell import idle, llm, server
 from ai_shell.session import Session
+from tests.stubs import forget_idle
 
 
 class EveryCallCountsAsActivity(unittest.TestCase):
+    def setUp(self):
+        self.addCleanup(forget_idle)
+
     def test_a_completion_runs_inside_idle_active(self):
         # _complete is the single point every model call in this app passes
         # through, which is the only reason one wrap covers all four callers.

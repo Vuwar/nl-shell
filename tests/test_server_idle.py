@@ -12,7 +12,8 @@ import threading
 import unittest
 from unittest import mock
 
-from ai_shell import config, idle, models, server
+from ai_shell import config, models, server
+from tests.stubs import forget_idle
 
 
 class Pressure(unittest.TestCase):
@@ -54,7 +55,11 @@ class Wiring(unittest.TestCase):
             server._log = None
 
         self.addCleanup(reset)
-        self.addCleanup(idle.park)
+        # test_a_wake_into_a_busier_card_puts_less_on_it runs the real
+        # idle.configure, which leaves a watchdog holding callbacks that start
+        # and stop a real server. Left behind, the next file's stub model call
+        # goes looking for llama-server.
+        self.addCleanup(forget_idle)
 
     @contextlib.contextmanager
     def _stubbed(self, free_vram=8.0, started=None):
