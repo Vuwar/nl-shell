@@ -5,8 +5,7 @@ import { useEffect, useRef, useState } from "react";
 // already here - stays with the boot row it has always used. This screen is
 // for the one wait that takes minutes, not for every wait.
 const DRAWN = new Set([
-  "resolving", "downloading", "verifying", "retrying",
-  "refetching", "loading", "failed",
+  "downloading", "verifying", "retrying", "refetching", "loading", "failed",
 ]);
 
 // Reads the payload the Python side polls out, and keeps the two things a
@@ -74,8 +73,7 @@ export function useDemoProgress() {
   let phase = "downloading";
   let percent = Math.min(100, Math.round((seconds / 30) * 100));
   let retry = null;
-  if (seconds < 1) phase = "resolving";
-  else if (seconds > 8 && seconds < 11) {
+  if (seconds > 8 && seconds < 11) {
     phase = "retrying";
     percent = 27;
     retry = { attempt: 2, of: 8, wait: 3 };

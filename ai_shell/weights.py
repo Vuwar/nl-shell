@@ -332,9 +332,11 @@ def ensure(ref, label, on_status=None, on_progress=None):
     Raises WeightsError when they can't be had - the caller turns that into
     the message the user sees.
 
-    `on_status` is a line for a human to read. `on_progress` is the same
-    download as a dict, for an interface that draws it rather than printing
-    it. Only what this module can know goes into that payload, so there is
+    `on_status` is a line for a human to read, and is called on every start.
+    `on_progress` is the same download as a dict, for an interface that draws
+    it rather than printing it, and is called only when there is a download:
+    a start that finds its weights already on disk emits nothing at all.
+    Only what this module can know goes into that payload, so there is
     nothing about layers or graphics cards here - ai_shell.server merges
     those in on the way past.
     """
@@ -346,7 +348,9 @@ def ensure(ref, label, on_status=None, on_progress=None):
         if on_progress:
             on_progress(dict(phase=phase, label=label, **fields))
 
-    emit("resolving")
+    # No payload yet. Resolving happens on every start, including the ones
+    # with nothing to fetch, and a payload here puts an install screen in
+    # front of somebody whose weights have been on the disk for weeks.
     say(f"Resolving {label}…")
     _, files = resolve(ref)
 
@@ -363,6 +367,17 @@ def ensure(ref, label, on_status=None, on_progress=None):
         _check_space(pending)
         total = sum(file.size for file, _ in targets)
         before = sum(file.size for file, path in targets if os.path.exists(path))
+        # The opening frame, before a single byte is asked for. It is what
+        # makes a resumed download appear already part-filled instead of
+        # animating two gigabytes into place in the first half second.
+        emit(
+            "downloading",
+            bytes_done=before,
+            bytes_total=total,
+            percent=before * 100 // total if total else 0,
+            rate=None,
+            eta=None,
+        )
         for file, path in pending:
             _download(file, path, label, before, total, say, emit)
             before += file.size

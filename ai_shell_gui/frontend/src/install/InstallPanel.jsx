@@ -6,7 +6,6 @@ import { formatBytes, formatEta, formatRate } from "./format";
 // under an input nobody can type into.
 
 function caption(install) {
-  if (install.phase === "resolving") return "Finding the weights";
   if (install.phase === "verifying") return "Checking what arrived";
   if (install.phase === "refetching") return "That copy didn't match, fetching it again";
   if (install.phase === "failed") return "The download stopped";

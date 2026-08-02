@@ -283,9 +283,32 @@ class ProgressPayloads(unittest.TestCase):
     def test_the_phases_arrive_in_order(self):
         self.run_ensure(StubHTTP(PAYLOAD))
         phases = [p["phase"] for p in self.payloads]
-        self.assertEqual(phases[0], "resolving")
-        self.assertIn("downloading", phases)
+        self.assertEqual(phases[0], "downloading")
         self.assertEqual(phases[-1], "verifying")
+
+    def test_weights_already_on_disk_say_nothing_at_all(self):
+        # Resolving happens on every start, including the ones with nothing
+        # to fetch. A payload here puts an install screen, or a progress ring
+        # around the folded tile, in front of somebody whose weights have
+        # been on the disk for weeks.
+        os.makedirs(weights.config.MODEL_DIR, exist_ok=True)
+        with open(os.path.join(weights.config.MODEL_DIR, "model-q6_k.gguf"), "wb") as handle:
+            handle.write(PAYLOAD)
+
+        self.run_ensure(StubHTTP(PAYLOAD))
+
+        self.assertEqual(self.payloads, [])
+        self.assertTrue(self.messages)   # the line is still printed
+
+    def test_the_first_frame_is_drawn_before_any_bytes_are_asked_for(self):
+        # Otherwise a resumed download opens at zero and animates whatever is
+        # already on disk into place, which claims two gigabytes arrived in
+        # the first half second.
+        self.run_ensure(StubHTTP(PAYLOAD))
+        first = self.payloads[0]
+        self.assertEqual(first["bytes_done"], 0)
+        self.assertEqual(first["bytes_total"], len(PAYLOAD))
+        self.assertIsNone(first["rate"])
 
     def test_a_downloading_payload_carries_the_numbers(self):
         self.run_ensure(StubHTTP(PAYLOAD))
