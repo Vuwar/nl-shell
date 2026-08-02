@@ -1,0 +1,126 @@
+/* The install grid. Its whole vocabulary is borrowed from the panel: the same
+   glass fill, the same accent, the same sheen sweep. A download screen that
+   introduced its own look would read as a different application wearing this
+   one's window. */
+
+.layer-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--columns), 1fr);
+  gap: 4px;
+}
+
+.brick {
+  position: relative;
+  height: 14px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+/* The light inside a brick, sized by how much of it has arrived. A partial
+   brick is the one currently downloading, and it is the only place in the grid
+   where a fraction is visible. */
+.brick::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform-origin: left;
+  transform: scaleX(var(--fill, 0));
+  background: linear-gradient(
+    90deg,
+    rgba(139, 123, 255, 0.55),
+    rgba(255, 255, 255, 0.38)
+  );
+  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Arrival: the edge lights first, as if the light were bending through the
+   brick, and the bloom decays into plain glass over the next third of a
+   second. */
+.brick.full {
+  border-color: rgba(255, 255, 255, 0.16);
+  animation: brickArrive 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes brickArrive {
+  0% { box-shadow: 0 0 0 rgba(139, 123, 255, 0); }
+  35% { box-shadow: 0 0 8px rgba(139, 123, 255, 0.55); }
+  100% { box-shadow: 0 0 0 rgba(139, 123, 255, 0); }
+}
+
+/* Waiting, not stalled. Filled bricks breathe with a per-brick delay so the
+   block reads as alive while a connection is being slow. */
+.layer-grid.downloading .brick.full::after {
+  animation: brickBreathe 4s ease-in-out infinite;
+  animation-delay: var(--delay);
+}
+
+@keyframes brickBreathe {
+  0%, 100% { opacity: 0.92; }
+  50% { opacity: 1; }
+}
+
+/* Verifying is the sha256 pass: one sweep across everything, and the bricks
+   harden. Breathing stops here and never comes back - what follows is not a
+   wait on a network. */
+.layer-grid.verifying .brick::after,
+.layer-grid.loading .brick::after {
+  animation: none;
+}
+
+.layer-grid.verifying {
+  animation: gridSeal 900ms ease-out both;
+}
+
+@keyframes gridSeal {
+  0% { filter: brightness(1); }
+  45% { filter: brightness(1.35); }
+  100% { filter: brightness(1); }
+}
+
+/* Loading onto the card. The layers that fit go warm, the rest stay cool
+   glass, which is the same fact the settings screen states in a sentence. */
+.layer-grid.loading .brick.card::after {
+  background: linear-gradient(90deg, rgba(255, 186, 116, 0.7), rgba(255, 226, 183, 0.5));
+  transition: background 600ms ease;
+  transition-delay: var(--delay);
+}
+
+/* Retrying: the bytes are still on the disk, so the bricks stay exactly where
+   they are. Only the light goes still and dims. */
+.layer-grid.retrying .brick::after {
+  animation: none;
+  opacity: 0.55;
+}
+
+/* A checksum that failed twice is the one case where the grid honestly goes
+   backward. It drains rather than cutting to empty, so it reads as something
+   that happened rather than a repaint. */
+.layer-grid.refetching .brick::after {
+  transition: transform 700ms ease-in;
+}
+
+.layer-grid.failed .brick::after {
+  animation: none;
+  filter: grayscale(1);
+  opacity: 0.4;
+}
+
+/* Bricks that were on disk before this session started. They did not arrive
+   just now, and animating them would say that two gigabytes landed in the
+   first half second. */
+.layer-grid.instant .brick,
+.layer-grid.instant .brick::after {
+  animation: none;
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brick,
+  .brick::after,
+  .layer-grid {
+    animation: none !important;
+    transition: none !important;
+  }
+}
