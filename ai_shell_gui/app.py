@@ -262,6 +262,7 @@ class Api:
                 "command": None,
                 "search": None,
                 "risk": None,
+                "risk_reason": None,
                 "explanation": failure,
                 "options": [],
                 "notice": None,
@@ -279,6 +280,9 @@ class Api:
             # then runs it through confirm() like any other pending action.
             "search": data.get("search"),
             "risk": data.get("risk"),
+            # What the rules under the model objected to, so the confirmation
+            # can name it. None when the model called it risky on its own.
+            "risk_reason": data.get("risk_reason"),
             "explanation": data.get("explanation", ""),
             # the model occasionally puts junk here; keep only short strings
             "options": [o.strip() for o in options if isinstance(o, str) and o.strip()][:4],

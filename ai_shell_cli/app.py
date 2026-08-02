@@ -29,6 +29,18 @@ def run():
     main()
 
 
+def _confirm_prompt(reason):
+    """What to ask before running a risky command.
+
+    `reason` is the policy layer's phrase for what the command does, or None
+    when it was the model that called this risky and the rules had nothing to
+    add. Naming the specific thing is the whole value of the layer: "this
+    deletes files" is read, "this is risky" is clicked through.
+    """
+    warning = f"This {reason}." if reason else "This can't easily be undone."
+    return f"  {warning} Run it? (y/N/e to edit): "
+
+
 def main():
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
@@ -125,7 +137,7 @@ def main():
         edited = None
         if risk == "risky":
             print(f"\n  {command}\n")
-            choice = input("  This can't easily be undone. Run it? (y/N/e to edit): ").strip().lower()
+            choice = input(_confirm_prompt(data.get("risk_reason"))).strip().lower()
             if choice == "e":
                 edited = _edit_command(command)
                 if not edited:

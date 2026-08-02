@@ -26,7 +26,7 @@ import threading
 from openai import OpenAI
 
 from ai_shell import corrections, web
-from ai_shell import config, fit, server
+from ai_shell import config, fit, policy, server
 from ai_shell.config import API_KEY, BASE_URL
 from ai_shell.executor import execute_command, list_apps, run_command
 from ai_shell.listing import listing_parent, resolve_listed_paths
@@ -205,6 +205,13 @@ class Session:
             grounded = self._grounded_options(user_input, data)
             if grounded:
                 data["options"] = grounded
+
+        # The model classified its own output. The rules get the last word,
+        # and they only ever say "ask first" - see ai_shell/policy.py for why
+        # that asymmetry is the whole point.
+        data["risk_reason"] = policy.escalate(command)
+        if data["risk_reason"]:
+            data["risk"] = "risky"
 
         # History is appended after grounding so the model's context matches
         # the choices the user actually saw (and may answer with).

@@ -389,11 +389,67 @@ fine.
   would break the shape, so code fences, preambles and truncated objects
   aren't possible rather than merely rare. Servers that don't support this
   fall back to being asked nicely and having the answer salvaged
+- Whatever the model decided, the command is then read by a list of rules that
+  can only ever escalate: a delete, a disk format, a permission change, a
+  `-Force` on something that overwrites, a package install, anything piping a
+  download into an interpreter, anything writing into a system folder. The
+  model says safe, the rules say risky, risky wins. See
+  [The rules under the model](#the-rules-under-the-model)
 - Safe commands run immediately
 - Risky commands (delete, overwrite, install, system settings, etc.) show
   you the exact command and ask for confirmation before running - and let
   you edit it first, because the model getting one path segment wrong
   shouldn't mean retyping the whole request
+
+### The rules under the model
+
+The model that writes the command is also the model that decides whether the
+command is dangerous, and it is a 3B-14B running on a laptop. When it says
+"risky" you get asked; when it says "safe" the command runs with no question.
+So one misjudgement is not a worse answer, it's a deleted folder.
+
+`ai_shell/policy.py` reads every command underneath that judgement. It can turn
+safe into risky. It can never turn risky into safe, and that asymmetry is the
+whole design: a rule that can only add a confirmation cannot break anything by
+being wrong, which is what lets the list be blunt without having to be right.
+
+What it looks for:
+
+- **Verbs that need no context** - `rm`, `Remove-Item` and its aliases,
+  `shred`, `mkfs`, `dd`, `Format-Volume`, `shutdown`, `taskkill`, `chmod`,
+  `icacls`, `reg`, `systemctl`, `sudo`, `Invoke-Expression`, and
+  `git reset --hard` / `clean` / `push --force` and the rest of the
+  work-destroying subcommands
+- **Verbs that are ordinary until you see what came with them** - a `-Force`
+  on a copy or a move, `find ... -delete`, a write into `C:\Windows`, `/etc`,
+  `/usr` or a drive root, a package manager with `install` or `remove` on it
+- **Overwriting** - `>` onto a file that already exists (`>>` appends, so it
+  doesn't count), or `Set-Content` and `Out-File` onto one. The check asks the
+  filesystem rather than guessing
+- **Downloaded code reaching an interpreter** - `curl ... | sh`,
+  `irm ... | iex`, `base64 -d | bash`, `-EncodedCommand`, `-Verb RunAs`. This
+  is also the shape an instruction takes when it arrives through a web page or
+  a filename rather than from the person at the keyboard
+
+The mechanics are what make it work rather than the list. Commands are cut at
+`;`, `&&`, `||`, `|`, newlines and `$(...)` before anything is checked, so
+`ls; rm -rf ~` is two commands and the second one is read. Quoted text is
+found first and never treated as a verb, so `Write-Output 'rm -rf /'` is a
+string. PowerShell aliases and abbreviations resolve (`ri`, `del`, `-For`),
+leading `VAR=value` assignments are skipped, and `/bin/rm` and `rm.exe` are
+`rm`. When an interpreter is handed a quoted command inline
+(`powershell -Command "..."`), the rules read what's inside the quotes.
+
+It is not a sandbox and not a security boundary. The threat model is a small
+model misjudging its own output, not somebody working around it - base64, a
+name built out of variables, or an interpreter pointed at a file written a
+moment earlier all go straight through, and defending that would mean running
+the shell's parser. Anything the rules don't catch is classified by the model,
+which is where it was before.
+
+The confirmation says which rule fired: "Run this? It deletes files." rather
+than a general warning, because a warning that says nothing specific gets
+answered without being read.
 
 When you edit a command before running it, the pair - what you asked for, what
 the model wrote, what you replaced it with - is appended to
@@ -417,6 +473,7 @@ Turn it off with `AI_SHELL_CORRECTIONS=0`, or `"corrections": false` in
 ai_shell/           core logic, no UI code - LLM calls, command execution, session state
 ai_shell/config.py  settings: environment, then settings.json, then measured defaults
 ai_shell/corrections.py  commands you edited before running, for later use as training/eval data
+ai_shell/policy.py  rules that can call a command risky when the model didn't
 ai_shell/models.py  the model list, and which one this machine should run
 ai_shell/hardware.py how much RAM and GPU memory there is
 ai_shell/runtime.py finds llama-server, and installs one when there isn't one
@@ -623,12 +680,14 @@ out of two real ones.
 
 - Only handles single commands - nothing that needs multi-step planning yet
 - No persistent memory across sessions (each run starts fresh)
-- Command safety classification is done by the model's judgment, not a
-  hardcoded rule list - good enough to start, not bulletproof. Don't point
-  this at anything you can't afford to lose, and read the command before
-  confirming risky actions. Editing one doesn't get it re-classified: it was
-  called risky once and it stays risky, which is the safe direction to be
-  wrong in.
+- Command safety is the model's judgment plus a list of rules that can only
+  make it stricter ([the rules under the model](#the-rules-under-the-model)).
+  The rules catch the common destructive shapes; they are not a sandbox and
+  they don't try to stop anyone determined to get past them. A command that
+  neither the model nor the list recognises still runs without asking, so
+  don't point this at anything you can't afford to lose, and read the command
+  before confirming. Editing one doesn't get it re-classified: it was called
+  risky once and it stays risky, which is the safe direction to be wrong in.
 - No sandboxing - it runs with your full user permissions, same as opening
   a terminal yourself
 - Windows is the best-tested platform, simply because that's where it was

@@ -322,7 +322,7 @@ const keepGesture = (e) => e.stopPropagation();
 // The confirmation for a risky command: what it is, and a chance to fix it.
 // Its own component because the edit box holds state, and the entry list that
 // renders it is otherwise stateless.
-function ConfirmRow({ command, onDecide }) {
+function ConfirmRow({ command, reason, onDecide }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(command);
   const areaRef = useRef(null);
@@ -372,7 +372,11 @@ function ConfirmRow({ command, onDecide }) {
         </pre>
       )}
       <div className="confirm-row">
-        <span>Run this? It can't easily be undone.</span>
+        {/* Naming what the command does is the point of the rules underneath
+            the model: "it deletes files" gets read, "it's risky" gets clicked
+            through. Without a reason it was the model that objected, and
+            there's nothing specific to say. */}
+        <span>Run this? {reason ? `It ${reason}.` : "It can't easily be undone."}</span>
         {editing ? (
           <button className="btn run" onClick={submitEdit}>
             Run it
@@ -804,6 +808,7 @@ function Entry({ entry, onConfirm, onChoose, onRetry, busy }) {
       return (
         <ConfirmRow
           command={entry.command}
+          reason={entry.reason}
           onDecide={(decision) => onConfirm(entry.id, decision)}
         />
       );
@@ -1360,9 +1365,9 @@ export default function App() {
     });
   }
 
-  function askConfirmation(command) {
+  function askConfirmation(command, reason) {
     return new Promise((resolve) => {
-      const id = addEntry({ kind: "confirm", command });
+      const id = addEntry({ kind: "confirm", command, reason });
       confirmResolvers.current[id] = resolve;
     });
   }
@@ -1496,7 +1501,7 @@ export default function App() {
       // version, which the session records as a correction.
       let edited = null;
       if (data.risk === "risky") {
-        const decision = await askConfirmation(data.command);
+        const decision = await askConfirmation(data.command, data.risk_reason);
         if (!decision.proceed) {
           addEntry({ kind: "skipped" });
           setStatus("ok");

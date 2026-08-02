@@ -577,21 +577,33 @@ This section is less exciting than §2 and more important than it. An AI that
 runs shell commands is asking for a lot of trust, and every item here is a
 reason to grant it.
 
-### 3.1 A deterministic policy layer under the model ★★ · Effort M
+### ~~3.1 A deterministic policy layer under the model~~ · Done
 
-Not replacing the model's classification - running underneath it. A hardcoded
-rule list that can only ever escalate: anything touching a system directory,
-anything recursive above a path depth, anything piping to `Invoke-Expression`,
-anything with a `-Force` on a delete, anything touching a protected path the user
-listed. The model says "safe", the rules say "risky", risky wins.
+`ai_shell/policy.py`, hooked into `Session.translate` so both interfaces
+inherit it. Escalate-only, as described: destructive verbs, `-Force` on
+something that overwrites, writes into protected paths, package installs,
+downloads reaching an interpreter, and `>` onto a file that exists.
 
-The asymmetry is the whole design. A rule that can only add friction can't break
-anything by being wrong, so the list can be aggressive without needing to be
-right.
+Two things turned out to matter more than the list itself. The first is
+splitting the command at `;`, `&&`, `||`, `|`, newlines and `$(...)` before
+reading it - a rule that looks at the first word is defeated by `ls; rm -rf ~`,
+which is not an exotic case but the normal shape of a two-part request. The
+second is finding quoted spans first, so `Write-Output 'rm -rf /'` is a string
+rather than a delete, and so a filename with a semicolon in it doesn't split
+into two commands. Alias resolution (`ri`, `del`), PowerShell's abbreviated
+flags (`-For`), `VAR=value` prefixes and `/bin/rm` all normalise into the same
+lookup.
 
-- **Touches:** new `ai_shell/policy.py`, `ai_shell/session.py`
-- **Catch:** false positives cost trust in a subtler way - confirm too much and
-  people stop reading the confirmations, which is worse than not having them.
+The confirmation now names the rule that fired ("It deletes files.") instead of
+warning in general terms, which is the part that answers the catch below: the
+defence against confirmation fatigue is a confirmation worth reading. The
+false-positive tests in `tests/test_policy.py` are held to the same standard as
+the rest - listing, reading, `Get-ChildItem -Recurse` and a quoted command must
+all still run without a question.
+
+Still open, and deliberately: the layer can't see through base64, a name built
+out of variables, or an interpreter pointed at a file written a moment earlier.
+That's §3.5's job, not this one's.
 
 ### 3.2 Actually undoable ★★★ · Effort L
 
@@ -1035,7 +1047,9 @@ one up:
 
 ```
 §4.2 edit before confirm ──► §1.3 learn from corrections ──► needs §5.2 to retrieve well
-§3.1 policy layer ─────────► §4.8 diagnostics loop (needs deterministic read-only)
+§3.1 policy layer (done) ──► §4.8 diagnostics loop still needs the other half of
+                          │    it: an allowlist saying what IS read-only, which
+                          │    is a different list from what's destructive
                           └► §3.2 undo (needs to know what's risky, reliably)
 §2.1 long-running jobs ────► §4.3 streaming
    (the Popen rework)     └► §2.1 notifications  (half-built without each other)
