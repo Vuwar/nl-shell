@@ -34,6 +34,7 @@ import urllib.error
 from dataclasses import dataclass
 
 from ai_shell import config, fetch
+from ai_shell.progress import Smoother
 
 API = "https://huggingface.co/api/models/{repo}?blobs=true"
 DOWNLOAD = "https://huggingface.co/{repo}/resolve/{revision}/{name}"
@@ -220,11 +221,15 @@ def _check_space(pending):
         )
 
 
-def _download(file, path, label, before, total, say):
+def _download(file, path, label, before, total, say, emit):
     """Fetch one file into `path`, resuming and retrying until it verifies.
 
     `before` is how many bytes of the whole set are already accounted for, so
     the percentage counts the set rather than restarting at zero per shard.
+
+    `say` and `emit` are the same progress reported twice, at two different
+    rates. `say` is a line for a terminal and moves in whole percents; `emit`
+    is the desktop panel's payload and moves as often as fetch reports.
     """
     partial = path + ".partial"
     refetched = False
@@ -232,21 +237,34 @@ def _download(file, path, label, before, total, say):
 
     while True:
         attempt += 1
-        try:
+        # Restarted per attempt, and seeded with what is already on disk: a
+        # resumed download that counted those bytes as having just arrived
+        # would open with a rate of several gigabytes a second.
+        smoother = Smoother(started_at=before + _size(partial))
+        said = [-1]
+
+        def progress(read, file_total):
+            done = min(before + read, total)
+            percent = done * 100 // total if total else 0
+            smoother.sample(done, time.monotonic())
+            emit(
+                "downloading",
+                bytes_done=done,
+                bytes_total=total,
+                percent=percent,
+                rate=smoother.rate,
+                eta=smoother.eta_for(total),
+            )
             # Whole percents only. fetch reports five times a second now, and
             # this line goes to a terminal as well as to the window.
-            said = [-1]
+            if percent != said[0]:
+                said[0] = percent
+                say(
+                    f"Downloading {label} - {percent}% "
+                    f"({_gb(done)} of {_gb(total)} GB)"
+                )
 
-            def progress(read, file_total):
-                done = min(before + read, total)
-                percent = done * 100 // total if total else 0
-                if percent != said[0]:
-                    said[0] = percent
-                    say(
-                        f"Downloading {label} - {percent}% "
-                        f"({_gb(done)} of {_gb(total)} GB)"
-                    )
-
+        try:
             fetch.download(file.url, partial, progress, resume=True)
         except fetch.FetchError as error:
             if not _retryable(error) or attempt >= ATTEMPTS:
@@ -257,7 +275,15 @@ def _download(file, path, label, before, total, say):
                     "Start the app again and it picks up from there."
                 ) from None
             wait = BACKOFF[min(attempt - 1, len(BACKOFF) - 1)]
-            at = (before + _size(partial)) * 100 // total
+            done = before + _size(partial)
+            at = done * 100 // total
+            emit(
+                "retrying",
+                bytes_done=done,
+                bytes_total=total,
+                percent=at,
+                retry={"attempt": attempt + 1, "of": ATTEMPTS, "wait": wait},
+            )
             say(
                 f"Connection lost at {at}% - retrying in {wait}s "
                 f"(attempt {attempt + 1} of {ATTEMPTS})"
@@ -265,6 +291,13 @@ def _download(file, path, label, before, total, say):
             time.sleep(wait)
             continue
 
+        done = before + file.size
+        emit(
+            "verifying",
+            bytes_done=done,
+            bytes_total=total,
+            percent=done * 100 // total if total else 0,
+        )
         say("Checking the download…")
         if _sha256(partial) == file.sha256:
             # Renaming is what marks it verified. No separate state file can
@@ -284,19 +317,36 @@ def _download(file, path, label, before, total, say):
         # starting clean; twice is not, and looping on gigabytes is not a fix.
         refetched = True
         attempt = 0
+        emit(
+            "refetching",
+            bytes_done=before,
+            bytes_total=total,
+            percent=before * 100 // total if total else 0,
+        )
         say("The download didn't match its checksum - fetching it again from the start.")
 
 
-def ensure(ref, label, on_status=None):
+def ensure(ref, label, on_status=None, on_progress=None):
     """The path to hand `llama-server -m`, downloading the weights if needed.
 
     Raises WeightsError when they can't be had - the caller turns that into
     the message the user sees.
+
+    `on_status` is a line for a human to read. `on_progress` is the same
+    download as a dict, for an interface that draws it rather than printing
+    it. Only what this module can know goes into that payload, so there is
+    nothing about layers or graphics cards here - ai_shell.server merges
+    those in on the way past.
     """
     def say(message):
         if on_status:
             on_status(message)
 
+    def emit(phase, **fields):
+        if on_progress:
+            on_progress(dict(phase=phase, label=label, **fields))
+
+    emit("resolving")
     say(f"Resolving {label}…")
     _, files = resolve(ref)
 
@@ -314,7 +364,7 @@ def ensure(ref, label, on_status=None):
         total = sum(file.size for file, _ in targets)
         before = sum(file.size for file, path in targets if os.path.exists(path))
         for file, path in pending:
-            _download(file, path, label, before, total, say)
+            _download(file, path, label, before, total, say, emit)
             before += file.size
 
     # The first file, not any file: a sharded model is loaded by pointing

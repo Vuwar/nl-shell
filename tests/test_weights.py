@@ -246,5 +246,99 @@ class Ensure(unittest.TestCase):
         self.assertTrue(any("100%" in line for line in lines))
 
 
+class ProgressPayloads(unittest.TestCase):
+    """What the desktop panel is drawn from, as opposed to what the CLI prints.
+
+    Both come out of the same download. The panel needs numbers several times
+    a second; a terminal needs a line per percent, and getting five a second
+    would be unreadable.
+    """
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        patch = mock.patch.object(weights.config, "MODEL_DIR", self.dir.name)
+        patch.start()
+        self.addCleanup(patch.stop)
+        sleep = mock.patch.object(weights.time, "sleep")
+        sleep.start()
+        self.addCleanup(sleep.stop)
+
+    def run_ensure(self, http, listing=None):
+        """Download our test payload, collecting both channels.
+
+        Both lists are left on self, so a test whose download is meant to
+        fail can still assert on what was reported before it did.
+        """
+        self.payloads = []
+        self.messages = []
+        with mock.patch.object(weights.fetch, "json_document", api(listing or one_file())):
+            with mock.patch("urllib.request.urlopen", http):
+                return weights.ensure(
+                    REF, "7B - test",
+                    on_status=self.messages.append,
+                    on_progress=self.payloads.append,
+                )
+
+    def test_the_phases_arrive_in_order(self):
+        self.run_ensure(StubHTTP(PAYLOAD))
+        phases = [p["phase"] for p in self.payloads]
+        self.assertEqual(phases[0], "resolving")
+        self.assertIn("downloading", phases)
+        self.assertEqual(phases[-1], "verifying")
+
+    def test_a_downloading_payload_carries_the_numbers(self):
+        self.run_ensure(StubHTTP(PAYLOAD))
+        last = [p for p in self.payloads if p["phase"] == "downloading"][-1]
+        self.assertEqual(last["label"], "7B - test")
+        self.assertEqual(last["bytes_total"], len(PAYLOAD))
+        self.assertEqual(last["bytes_done"], len(PAYLOAD))
+        self.assertEqual(last["percent"], 100)
+        # Present as keys even when there is not yet an answer, so the front
+        # end never has to ask whether a field exists.
+        self.assertIn("rate", last)
+        self.assertIn("eta", last)
+
+    def test_bytes_done_never_passes_the_total(self):
+        self.run_ensure(StubHTTP(PAYLOAD))
+        for payload in self.payloads:
+            if payload["phase"] == "downloading":
+                self.assertLessEqual(payload["bytes_done"], payload["bytes_total"])
+
+    def test_the_terminal_still_gets_whole_percents_only(self):
+        self.run_ensure(StubHTTP(PAYLOAD))
+        downloading = [m for m in self.messages if m.startswith("Downloading")]
+        self.assertTrue(downloading)
+        self.assertLessEqual(len(downloading), 101)
+        self.assertEqual(len(downloading), len(set(downloading)))
+
+    def test_a_dropped_connection_reports_retrying_with_its_countdown(self):
+        self.run_ensure(StubHTTP(PAYLOAD, fail_after=40000, failures=1))
+        retries = [p for p in self.payloads if p["phase"] == "retrying"]
+        self.assertTrue(retries)
+        self.assertEqual(retries[0]["retry"]["attempt"], 2)
+        self.assertEqual(retries[0]["retry"]["of"], weights.ATTEMPTS)
+        self.assertIn("wait", retries[0]["retry"])
+        # The bytes already on disk are still counted. That is the whole
+        # point of the phase: nothing was lost, it is a countdown.
+        self.assertGreater(retries[0]["bytes_done"], 0)
+
+    def test_a_checksum_failure_reports_refetching(self):
+        # A sha that never matches fails twice and then gives up, which is
+        # existing behaviour and not what this is testing. What matters is
+        # that the phase was announced on the way past, so the grid knows to
+        # drain rather than appearing to lose bytes for no reason.
+        with self.assertRaises(weights.WeightsError):
+            self.run_ensure(StubHTTP(PAYLOAD), listing=one_file(sha256="0" * 64))
+        self.assertIn("refetching", [p["phase"] for p in self.payloads])
+
+    def test_no_on_progress_still_works(self):
+        lines = []
+        with mock.patch.object(weights.fetch, "json_document", api(one_file())):
+            with mock.patch("urllib.request.urlopen", StubHTTP(PAYLOAD)):
+                weights.ensure(REF, "7B - test", on_status=lines.append)
+        self.assertTrue(lines)
+
+
 if __name__ == "__main__":
     unittest.main()
