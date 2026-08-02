@@ -166,8 +166,10 @@ def ensure_running(on_status=None, on_progress=None):
     # difference between an install screen and a line above the input.
     model = config.current_model()
     first_install = not config.installed_models()
+    drew = []   # whether this start had a download worth drawing
 
     def progress(payload):
+        drew.append(payload["phase"])
         if on_progress:
             on_progress(dict(
                 payload,
@@ -222,12 +224,19 @@ def ensure_running(on_status=None, on_progress=None):
         global _free_vram_at_start
         _free_vram_at_start = current.free_vram_gb()
 
-        # The last thing the panel is told before the weights go into memory.
-        # Said here rather than after start_background, because loading a
-        # seven-gigabyte model takes the better part of a minute and this is
-        # the sentence that explains that wait.
+        # The last thing the panel is told before the weights go into memory,
+        # and only when there was something being drawn already. Loading is
+        # the end of an install, not an event of its own: on an ordinary
+        # start the weights are already here, and a grid that appears for a
+        # few seconds on every single launch is worse than the line it
+        # replaced.
         gpu_layers = _gpu_layers()
-        progress({"phase": "loading", "label": config.MODEL_LABEL, "gpu_layers": gpu_layers})
+        if drew:
+            progress({
+                "phase": "loading",
+                "label": config.MODEL_LABEL,
+                "gpu_layers": gpu_layers,
+            })
 
         try:
             # Appended to, not truncated: when a start fails and the user

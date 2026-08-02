@@ -120,7 +120,8 @@ class ProgressDecoration(unittest.TestCase):
 
     def test_a_loading_payload_says_what_goes_on_the_card(self):
         seen = []
-        with self._stubbed(gpu_layers=19):
+        sent = lambda emit: emit({"phase": "downloading", "label": "Test", "percent": 5})
+        with self._stubbed(weights_ensure=sent, gpu_layers=19):
             server.ensure_running(on_progress=seen.append)
 
         loading = [p for p in seen if p["phase"] == "loading"]
@@ -128,9 +129,19 @@ class ProgressDecoration(unittest.TestCase):
         self.assertEqual(loading[0]["gpu_layers"], 19)
         self.assertEqual(loading[0]["layers"], 28)
 
+    def test_a_start_with_nothing_to_download_says_nothing(self):
+        # Loading is the end of an install, not an event of its own. Emitting
+        # it on every start puts a progress ring around the folded tile of an
+        # app that is merely opening, which is what shipped once already.
+        seen = []
+        with self._stubbed(installed=["qwen2.5-coder-7b-q4"]):
+            server.ensure_running(on_progress=seen.append)
+        self.assertEqual(seen, [])
+
     def test_first_install_is_false_when_something_is_already_here(self):
         seen = []
-        with self._stubbed(installed=["qwen2.5-coder-3b-q4"]):
+        sent = lambda emit: emit({"phase": "downloading", "label": "Test", "percent": 5})
+        with self._stubbed(weights_ensure=sent, installed=["qwen2.5-coder-3b-q4"]):
             server.ensure_running(on_progress=seen.append)
         self.assertFalse(seen[0]["first_install"])
 
