@@ -1,13 +1,13 @@
 """Stand-ins for the two things the tests can't have: a model, and a network.
 
-The model stub implements only the one shape ai_shell.llm uses — client.chat
+The model stub implements only the one shape ai_shell.llm uses - client.chat
 .completions.create(...) returning something with .choices[0].message.content.
 Replies are queued and handed out in order, which is what lets a test drive the
 retry path by saying "answer badly, then answer well".
 
 The HTTP stub is the same idea one layer down. ai_shell.fetch and
 ai_shell.weights exist to survive a connection that dies mid-download, and that
-failure can't be provoked against a real server on demand — so StubHTTP can be
+failure can't be provoked against a real server on demand - so StubHTTP can be
 told to drop the body after N bytes, to ignore a Range request, or to answer
 with a status code, and the tests drive the recovery from there.
 """
@@ -22,6 +22,9 @@ class StubClient:
         self._replies = list(replies)
         self.calls = 0
         self.messages = []      # what was sent, for asserting on the retry
+        # What the server would report having generated. None is a backend
+        # that reports no usage at all, which the speed check has to survive.
+        self.usage_tokens = 100
         self.chat = self
         self.completions = self
 
@@ -32,7 +35,7 @@ class StubClient:
         # so a runaway loop shows up as a wrong call count rather than an
         # IndexError that says nothing about what went wrong.
         payload = self._replies.pop(0) if len(self._replies) > 1 else self._replies[0]
-        return _Response(payload)
+        return _Response(payload, self.usage_tokens)
 
 
 class DeadClient:
@@ -47,8 +50,14 @@ class DeadClient:
 
 
 class _Response:
-    def __init__(self, content):
+    def __init__(self, content, usage_tokens=100):
         self.choices = [_Choice(content)]
+        self.usage = _Usage(usage_tokens) if usage_tokens is not None else None
+
+
+class _Usage:
+    def __init__(self, completion_tokens):
+        self.completion_tokens = completion_tokens
 
 
 class _Choice:
@@ -65,7 +74,7 @@ class StubResponse:
     """What urlopen returns: a readable body, a status, and headers.
 
     `fail_after` makes the body stop short, which is the failure this whole
-    feature exists for — a connection that dies mid-download.
+    feature exists for - a connection that dies mid-download.
     """
 
     def __init__(self, body, status=200, headers=None, fail_after=None):
@@ -96,7 +105,7 @@ class StubHTTP:
     """Stands in for urllib.request.urlopen, serving one body.
 
     `ranges=False` is a server that ignores a Range request and sends the whole
-    file with a 200 — the case that corrupts a naive resume. `failures` is how
+    file with a 200 - the case that corrupts a naive resume. `failures` is how
     many of the next calls die after `fail_after` bytes.
     """
 

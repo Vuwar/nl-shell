@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
+import "./install/install.css";
+import InstallPanel from "./install/InstallPanel";
+import InstallRow from "./install/InstallRow";
+import TileRing from "./install/TileRing";
+import { formatBytes } from "./install/format";
+import { DEMO, useDemoProgress, useInstallProgress } from "./install/useInstallProgress";
 
 let nextId = 1;
 const uid = () => nextId++;
@@ -47,6 +53,10 @@ const SOUND_THEMES = {
 };
 
 const DEFAULT_SETTINGS = { soundTheme: "glass", volume: 0.5, minimizeOnBlur: true };
+
+// The bottom of the opacity slider. Mirrors ai_shell.config.MIN_OPACITY, which
+// clamps whatever this sends anyway - this is only where the track starts.
+const MIN_OPACITY = 30;
 
 function loadSettings() {
   try {
@@ -118,11 +128,11 @@ function playKey(kind) {
     osc.start(t);
     osc.stop(t + spec.dur);
   } catch {
-    // audio is a garnish — never let it break input handling
+    // audio is a garnish - never let it break input handling
   }
 }
 
-// Must match WINDOW_WIDTH and MINI_SIZE in gui/app.py — the window is sized
+// Must match WINDOW_WIDTH and MINI_SIZE in gui/app.py - the window is sized
 // from here, so these are the two shapes it can have.
 const PANEL_WIDTH = 560;
 const MINI_SIZE = 48;
@@ -145,7 +155,7 @@ const reduceMotion = () =>
 //
 // The observed element is the panel BODY, not the panel: the body is pinned to
 // PANEL_WIDTH whatever the window is doing, so its height stays meaningful
-// while the window is halfway through a fold — that measurement is what the
+// while the window is halfway through a fold - that measurement is what the
 // unfold animates back to. Measuring anything window-width would instead
 // report the height of the content reflowed into a 48px column.
 function useWindowGeometry(bodyRef, ready, mini) {
@@ -187,7 +197,7 @@ function useWindowGeometry(bodyRef, ready, mini) {
 
     const ro = new ResizeObserver((entriesList) => {
       contentRef.current = measure(entriesList[0].target);
-      // Collapsed, the window's size is the tile's, not the content's — the
+      // Collapsed, the window's size is the tile's, not the content's - the
       // new height is only recorded, to be unfolded to later.
       if (!miniRef.current) animate(reduceMotion() ? 0 : GROW_MS);
     });
@@ -217,18 +227,18 @@ const COMMANDS = [
 const HINTS = [
   { text: "Ask for anything in plain English" },
   { key: "exit", text: "on its own closes the window" },
-  { key: "/", text: "opens the commands — /settings, /clear" },
+  { key: "/", text: "opens the commands - /settings, /clear" },
   { key: "Esc", text: "clears the screen when you're done" },
   { key: "↑ ↓", text: "step back through what you've asked" },
   { key: "Tab", text: "fills in the highlighted command" },
-  { key: "Enter", text: "sends it — no need to know the command" },
+  { key: "Enter", text: "sends it - no need to know the command" },
   { text: "Anything destructive asks you first" },
-  { text: "Ask a follow-up — it remembers the conversation" },
-  { key: "/settings", text: "has typing sounds and volume" },
+  { text: "Ask a follow-up - it remembers the conversation" },
+  { key: "/settings", text: "has typing sounds, volume and which model runs" },
   // Precise on purpose: the model really is local, and a web search really
   // does send the query out. Overstating the first would make a liar of the
   // app the first time somebody asks it to look something up.
-  { text: "Runs on a local model — only web searches leave this PC" },
+  { text: "Runs on a local model - only web searches leave this PC" },
   { text: "Ask about the world and it looks it up on the web" },
   { text: "Click a folder in a listing to open it" },
   { text: "Click a file in a listing to open it with Windows" },
@@ -236,7 +246,7 @@ const HINTS = [
   { text: "“Show detailed” adds size, type and date" },
   { text: "Copy buttons put any output on the clipboard" },
   { text: "Drag anywhere on the panel to move the window" },
-  { text: "Click away and it shrinks — click the tile to bring it back" },
+  { text: "Click away and it shrinks - click the tile to bring it back" },
   { text: "Not sure? Ask “what's taking up my disk space”" },
   { text: "When it asks something, click an answer or type your own" },
   { text: "The dot on the left shows what it's doing" },
@@ -261,7 +271,7 @@ const HINT_FADE = 320; // must match .input-hint's transition in App.css
 // Returns advance() so a send can turn the page too: you've just proved you
 // know how to send something, and the next empty box is a fresh chance to
 // show you something you don't know yet.
-function useRotatingHint(paused) {
+export function useRotatingHint(paused) {
   const bag = useRef([]);
   const fade = useRef(null);
 
@@ -303,7 +313,7 @@ function useRotatingHint(paused) {
 
 // pywebview's easy_drag makes a mousedown anywhere in the window start moving
 // it, which is what a frameless panel wants everywhere except on a control
-// that has its own idea of what dragging means — a slider, a scrollbar, a
+// that has its own idea of what dragging means - a slider, a scrollbar, a
 // selectable block of text. It listens on `window`, and React hands us the
 // native event on its way there, so stopping it here is enough to keep the
 // two from fighting over the same gesture.
@@ -312,7 +322,40 @@ const keepGesture = (e) => e.stopPropagation();
 // The confirmation for a risky command: what it is, and a chance to fix it.
 // Its own component because the edit box holds state, and the entry list that
 // renders it is otherwise stateless.
-function ConfirmRow({ command, onDecide }) {
+/* Tabular output as a table, the way a directory listing is already a table.
+   The rows arrive already split into cells by the projection in
+   ai_shell.platforms - the shell's own version was sized for an eighty-column
+   console, which cut values off mid-word and wrapped long rows onto a second
+   line, and no amount of styling recovers characters that are already gone. */
+function ResultTable({ columns, rows }) {
+  if (!rows || rows.length === 0) {
+    return <div className="entry system-line">Nothing there.</div>;
+  }
+  return (
+    <div className="entry table-wrap">
+      <table className="result-table">
+        <thead>
+          <tr>
+            {columns.map((name, index) => (
+              <th key={index}>{name}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {row.map((cell, cellIndex) => (
+                <td key={cellIndex}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ConfirmRow({ command, reason, does, onDecide }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(command);
   const areaRef = useRef(null);
@@ -327,7 +370,7 @@ function ConfirmRow({ command, onDecide }) {
 
   function submitEdit() {
     const text = draft.trim();
-    // An empty edit cancels rather than running an empty command — the same
+    // An empty edit cancels rather than running an empty command - the same
     // rule the console REPL follows.
     onDecide(text ? { proceed: true, command: text } : { proceed: false, command: null });
   }
@@ -361,8 +404,24 @@ function ConfirmRow({ command, onDecide }) {
           {command}
         </pre>
       )}
+      {/* What the command above actually does, in words. Anyone who can read
+          the PowerShell doesn't need this app; anyone who can't was being
+          asked to approve something they had no way to evaluate, under a
+          warning that it can't be undone. Absent when nothing could be said
+          about the command, rather than filled with a guess. */}
+      {!editing && does && does.length > 0 && (
+        <ul className="confirm-does">
+          {does.map((line, index) => (
+            <li key={index}>{line}</li>
+          ))}
+        </ul>
+      )}
       <div className="confirm-row">
-        <span>Run this? It can't easily be undone.</span>
+        {/* Naming what the command does is the point of the rules underneath
+            the model: "it deletes files" gets read, "it's risky" gets clicked
+            through. Without a reason it was the model that objected, and
+            there's nothing specific to say. */}
+        <span>Run this? {reason ? `It ${reason}.` : "It can't easily be undone."}</span>
         {editing ? (
           <button className="btn run" onClick={submitEdit}>
             Run it
@@ -401,7 +460,7 @@ async function writeClipboard(text) {
       return true;
     }
   } catch {
-    // blocked or unavailable — the execCommand path below still works
+    // blocked or unavailable - the execCommand path below still works
   }
   try {
     const scratch = document.createElement("textarea");
@@ -446,7 +505,7 @@ function CopyButton({ text, floating }) {
   );
 }
 
-// .lnk/.url files are shortcuts — the extension is plumbing, so it's dropped
+// .lnk/.url files are shortcuts - the extension is plumbing, so it's dropped
 // from the displayed name and surfaced as a "Shortcut" type instead.
 const SHORTCUT_EXT = /\.(lnk|url)$/i;
 const SIZE_UNITS = ["KB", "MB", "GB", "TB", "PB"];
@@ -487,7 +546,7 @@ function formatModified(iso) {
 function listingToText(path, items, detailed) {
   const rows = items.map((item) => ({
     name: item.dir ? item.name : item.name.replace(SHORTCUT_EXT, ""),
-    size: item.dir ? "—" : formatSize(item.size),
+    size: item.dir ? "-" : formatSize(item.size),
     kind: fileKind(item),
     date: formatModified(item.modified),
   }));
@@ -517,7 +576,7 @@ function Crumbs({ path, onGo, disabled }) {
   const parts = rooted ? ["/", ...segments] : segments;
   const targetOf = (i) => {
     if (rooted) return i === 0 ? "/" : "/" + parts.slice(1, i + 1).join("/");
-    // The drive needs its trailing slash — "C:" alone means something else
+    // The drive needs its trailing slash - "C:" alone means something else
     // to PowerShell (the current directory on that drive).
     return i === 0 ? `${parts[0]}\\` : parts.slice(0, i + 1).join("\\");
   };
@@ -596,7 +655,7 @@ function Listing({ path, items, kind, busy }) {
     <div className={`entry listing${loading ? " loading" : ""}`}>
       {here && <Crumbs path={here} onGo={go} disabled={locked} />}
       {rows.length === 0 ? (
-        // Still inside the frame, so the breadcrumbs above remain — an empty
+        // Still inside the frame, so the breadcrumbs above remain - an empty
         // folder must not be a dead end.
         <div className="listing-empty">
           {rowKind === "item" ? "Nothing there." : `No ${rowKind}s there.`}
@@ -615,7 +674,7 @@ function Listing({ path, items, kind, busy }) {
               <span className={`listing-name${item.dir ? " dir" : ""}`}>
                 {item.dir ? item.name : item.name.replace(SHORTCUT_EXT, "")}
               </span>
-              {/* A folder's size slot carries the chevron instead — it says
+              {/* A folder's size slot carries the chevron instead - it says
                   "this one goes somewhere" where a size would say nothing. */}
               <span className="listing-size">
                 {item.dir ? <span className="listing-chevron">›</span> : formatSize(item.size)}
@@ -643,7 +702,7 @@ function Listing({ path, items, kind, busy }) {
   );
 }
 
-// A web answer as text, for the copy button — the answer plus the numbered
+// A web answer as text, for the copy button - the answer plus the numbered
 // sources, so what leaves the window still says where it came from. The read
 // marks come too: pasted somewhere else, they're what says which of these the
 // answer was actually drawn out of.
@@ -680,7 +739,7 @@ function WebAnswer({ answer, sources, caveat, busy }) {
 
   return (
     <div className="entry answer">
-      {/* Selectable like command output is — an answer people will want to
+      {/* Selectable like command output is - an answer people will want to
           quote out of, not just read. */}
       {answer && (
         <div className="answer-text" onMouseDown={keepGesture}>
@@ -790,15 +849,23 @@ function Entry({ entry, onConfirm, onChoose, onRetry, busy }) {
           {entry.text}
         </div>
       );
+    case "table":
+      return <ResultTable columns={entry.columns} rows={entry.rows} />;
     case "confirm":
       return (
         <ConfirmRow
           command={entry.command}
+          reason={entry.reason}
+          does={entry.does}
           onDecide={(decision) => onConfirm(entry.id, decision)}
         />
       );
     case "skipped":
       return <div className="entry system-line">Skipped.</div>;
+    case "notice":
+      // Why that took so long. Said once a session, and never urgent enough
+      // to be dismissable - it goes away with everything else on /clear.
+      return <div className="entry entry-notice">{entry.text}</div>;
     case "output":
       return (
         <div className="entry entry-output">
@@ -812,7 +879,7 @@ function Entry({ entry, onConfirm, onChoose, onRetry, busy }) {
       );
     case "listing":
       // entry.kind is the entry type ("listing"); kindLabel is what the rows
-      // are — "folder", "file" or "item".
+      // are - "folder", "file" or "item".
       return (
         <Listing path={entry.path} items={entry.items} kind={entry.kindLabel} busy={busy} />
       );
@@ -851,8 +918,11 @@ export default function App() {
   const [status, setStatus] = useState("idle"); // idle | thinking | ok | error
   // What the model server is doing while it starts, or null once it's up.
   const [booting, setBooting] = useState(null);
+  // The same start as numbers, when there is a weights download worth
+  // drawing. Null for every other kind of wait, which is most of them.
+  const [startup, setStartup] = useState(null);
   // The version waiting to be installed, once one has finished downloading.
-  // Null until then — a check nobody asked for shouldn't be visible while
+  // Null until then - a check nobody asked for shouldn't be visible while
   // it's happening, only when it has something to offer.
   const [updateReady, setUpdateReady] = useState(null);
   const [updating, setUpdating] = useState(false);
@@ -861,13 +931,21 @@ export default function App() {
   const [minimized, setMinimized] = useState(false);
   const [clearing, setClearing] = useState(false);
   // Where the tile was pressed, whether that press is holding it folded, and
-  // whether it is folded right now — all read from callbacks that must not be
+  // whether it is folded right now - all read from callbacks that must not be
   // rebuilt every time one of them changes.
   const pressAt = useRef(null);
   const holdFolded = useRef(false);
   const foldedRef = useRef(false);
   const [view, setView] = useState("shell"); // shell | settings
   const [prefs, setPrefs] = useState(soundPrefs);
+  // What this machine can run, for the settings screen's model list. Fetched
+  // when that screen opens rather than at startup: it reads the filesystem,
+  // and nothing needs it until somebody is looking at it.
+  const [modelList, setModelList] = useState({ models: [], editable: true, model_dir: "" });
+  // How see-through the window is, 30-100. Python owns this one rather than
+  // localStorage: it is a native window property, applied before this page
+  // exists so the panel doesn't flash solid on every launch. Null until read.
+  const [opacity, setOpacity] = useState(null);
   const [selIdx, setSelIdx] = useState(0);
   // Everything the user has sent, oldest first, for Up/Down recall.
   const sent = useRef([]);
@@ -885,11 +963,50 @@ export default function App() {
 
   useEffect(() => setSelIdx(0), [value]);
 
-  // Hints only rotate on an idle, empty, visible input — never while you're
+  // Hints only rotate on an idle, empty, visible input - never while you're
   // typing into it, reading a result, or looking at the collapsed tile.
   const { hint, shown: hintShown, advance: nextHint } = useRotatingHint(
     view !== "shell" || value !== "" || busy || entries.length > 0 || minimized
   );
+
+  // The weights download, as something to draw. Null unless one is running.
+  const demo = useDemoProgress();
+  const install = useInstallProgress(DEMO ? demo : startup);
+
+  // The install screen outlives its payload by the length of its own exit.
+  // Unmounting the moment the server is ready would cut the grid off at the
+  // frame it finally had something good to say.
+  const [leaving, setLeaving] = useState(false);
+  const wasInstalling = useRef(false);
+  useEffect(() => {
+    if (install) {
+      wasInstalling.current = true;
+      return undefined;
+    }
+    if (!wasInstalling.current) return undefined;
+    wasInstalling.current = false;
+    setLeaving(true);
+    const timer = setTimeout(() => setLeaving(false), 260); // installCollapse
+    return () => clearTimeout(timer);
+  }, [install]);
+
+  // What to render: the live install, or the one being seen out.
+  const lastInstall = useRef(null);
+  if (install) lastInstall.current = install;
+  const shownInstall = install || (leaving ? lastInstall.current : null);
+
+  // Folded, the tile is all there is, and a download it can only draw as a
+  // ring moves too slowly to look like anything is happening. Every brick
+  // that lands behind the fold gets a beat out of the dots, so the tile is
+  // working rather than sitting there for two minutes.
+  const landed = shownInstall ? Math.floor(shownInstall.filled) : 0;
+  const [tileBeat, setTileBeat] = useState(false);
+  useEffect(() => {
+    if (!landed) return undefined;
+    setTileBeat(true);
+    const timer = setTimeout(() => setTileBeat(false), 460); // tileBeat
+    return () => clearTimeout(timer);
+  }, [landed]);
 
   // Settings view: Esc closes it; returning to the shell refocuses the input.
   useEffect(() => {
@@ -903,10 +1020,74 @@ export default function App() {
     inputRef.current?.focus();
   }, [view]);
 
+  useEffect(() => {
+    if (view !== "settings" || !window.pywebview) return;
+    window.pywebview.api.list_models().then(setModelList).catch(() => {});
+  }, [view]);
+
+  // Read once the bridge exists. The window is already at this opacity - this
+  // is the slider catching up with it, and the CSS below dressing to match.
+  useEffect(() => {
+    const load = () => window.pywebview.api.opacity().then(setOpacity).catch(() => {});
+    if (window.pywebview) {
+      load();
+      return;
+    }
+    window.addEventListener("pywebviewready", load);
+    return () => window.removeEventListener("pywebviewready", load);
+  }, []);
+
+  // The panel's own glass is thinned to match. Below full opacity the sheen
+  // gradient is sitting on top of somebody's wallpaper rather than on a dark
+  // panel, where it reads as a smear.
+  useEffect(() => {
+    if (opacity == null) return;
+    document.documentElement.style.setProperty("--panel-alpha", opacity / 100);
+  }, [opacity]);
+
+  // Dragging: the window follows every frame, nothing is written down. The
+  // value the user lets go of is the only one worth keeping, and set_opacity
+  // on the change event is what keeps a drag off the disk.
+  function dragOpacity(percent) {
+    setOpacity(percent);
+    if (!window.pywebview) return;
+    window.pywebview.api.preview_opacity(percent).catch(() => {});
+  }
+
+  function saveOpacity(percent) {
+    if (!window.pywebview) return;
+    window.pywebview.api.set_opacity(percent).then(setOpacity).catch(() => {});
+  }
+
   function updatePrefs(partial) {
     const next = { ...prefs, ...partial };
     saveSettings(next);
     setPrefs(next);
+  }
+
+  // The graphics-card explanation, wherever it came from. The route out of it
+  // is added here rather than in Python: the console's answer to the same
+  // situation is a typed word, and the shared text names neither.
+  function showNotice(notice) {
+    if (notice) {
+      addEntry({ kind: "notice", text: `${notice} Open /settings to switch model.` });
+    }
+  }
+
+  function switchModel(model) {
+    if (model.current || modelList.editable === false) return;
+    const size = model.installed ? "" : ` It's a ${model.weights_gb}GB download.`;
+    if (!window.confirm(`Switch to ${model.label}?${size}`)) return;
+    setView("shell");
+    window.pywebview.api.switch_model(model.id).then((result) => {
+      if (result && result.ok === false) {
+        addEntry({ kind: "error", text: result.reason });
+        return;
+      }
+      // The swap runs on a Python thread and reports through the same startup
+      // status the app's own launch does, so the boot row is what shows it.
+      watchStartup();
+    });
   }
 
   // The backend keeps the history, folder context and last listing that a
@@ -974,7 +1155,7 @@ export default function App() {
         // and the focus event beats the mousedown to the page, so opening
         // here immediately would open the panel before it could be told the
         // press was somebody picking the tile up to move it. This is the
-        // moment that press gets to say so (see onTilePress) — and it's
+        // moment that press gets to say so (see onTilePress) - and it's
         // short enough that returning by Alt-Tab still feels instant.
         openTimer = setTimeout(() => {
           openTimer = null;
@@ -997,13 +1178,13 @@ export default function App() {
     // is the web view's, and it drifts from the window's (observed: another
     // app takes the foreground and no blur ever arrives, leaving the panel
     // open over someone else's work). So the state is reconciled against the
-    // window the OS actually has in front — the events just get there sooner.
+    // window the OS actually has in front - the events just get there sooner.
     const check = async () => {
       let active;
       try {
         active = await window.pywebview.api.window_focused();
       } catch {
-        return; // window closing — nothing left to fold
+        return; // window closing - nothing left to fold
       }
       sync(active === null ? document.hasFocus() : active);
     };
@@ -1038,14 +1219,14 @@ export default function App() {
     return () => cancelAnimationFrame(id);
   }, [minimized]);
 
-  // Pressing the tile has two meanings — open it, or pick it up and move it
-  // somewhere — and they start identically. So a press holds the fold shut
+  // Pressing the tile has two meanings - open it, or pick it up and move it
+  // somewhere - and they start identically. So a press holds the fold shut
   // and only a release that didn't travel counts as opening it.
   //
   // The hold is what makes dragging work at all: moving the window means
   // clicking it, clicking it hands it focus, and focus is otherwise exactly
   // what opens the panel. Screen coordinates, not client ones, because the
-  // window is moving with the pointer — relative to it, nothing travels.
+  // window is moving with the pointer - relative to it, nothing travels.
   function onTilePress(e) {
     pressAt.current = { x: e.screenX, y: e.screenY };
     holdFolded.current = true;
@@ -1056,7 +1237,7 @@ export default function App() {
     pressAt.current = null;
     const travelled =
       from && Math.max(Math.abs(e.screenX - from.x), Math.abs(e.screenY - from.y)) > DRAG_SLOP;
-    if (travelled) return; // a move, not an open — the hold stays on
+    if (travelled) return; // a move, not an open - the hold stays on
     holdFolded.current = false;
     setMinimized(false);
   }
@@ -1073,7 +1254,7 @@ export default function App() {
   // on a line of text costs nothing next to what it's waiting for.
   // `stopped` is the window closing; `running` stops a Retry click starting a
   // second poll alongside the first. Both live in a ref because the watcher
-  // outlives the render that started it — it is restarted by the Retry button
+  // outlives the render that started it - it is restarted by the Retry button
   // as well as by the effect below.
   const startupWatch = useRef({ stopped: false, running: false });
 
@@ -1087,21 +1268,33 @@ export default function App() {
         try {
           state = await window.pywebview.api.startup_status();
         } catch {
-          return; // window closing — nothing left to report to
+          return; // window closing - nothing left to report to
         }
         if (watch.stopped) return;
         if (state.state === "starting") {
           setBooting(state.message);
+          setStartup(state);
           await new Promise((r) => setTimeout(r, 400));
           continue;
         }
         setBooting(null);
         if (state.state === "failed") {
           setStatus("error");
+          // Kept rather than cleared: the payload still carries how far the
+          // download got, and the grid freezes there instead of vanishing at
+          // the moment there is something to explain.
+          setStartup(state);
           upsertEntry(STARTUP_ERROR, { kind: "error", text: state.message, retry: true });
           return;
         }
-        // Ready — confirm it can actually be talked to, which is a different
+        setStartup(null);
+        // The graphics card has room for the model, or it hasn't. Said here
+        // rather than during the wait: it describes how the app will behave
+        // from now on, not what it is doing at this second.
+        if (state.notice) {
+          addEntry({ kind: "notice", text: `${state.notice} Open /settings to switch model.` });
+        }
+        // Ready - confirm it can actually be talked to, which is a different
         // question from whether the process started.
         const res = await window.pywebview.api.check_connection();
         if (!res.ok && !watch.stopped) {
@@ -1145,8 +1338,8 @@ export default function App() {
   }
 
   // The other thing happening in the background at startup: a look for a
-  // newer version of the app. Nothing is shown while it checks or downloads —
-  // an update the user can't act on yet is noise — so this watches for the
+  // newer version of the app. Nothing is shown while it checks or downloads -
+  // an update the user can't act on yet is noise - so this watches for the
   // one state that has anything to say, and then stops watching.
   useEffect(() => {
     if (!ready) return;
@@ -1206,7 +1399,7 @@ export default function App() {
     return entry.id;
   }
 
-  // A startup failure is reported by two different paths — the watcher below,
+  // A startup failure is reported by two different paths - the watcher below,
   // and a request that was held while the server started and has to be
   // answered somehow. Both are right; only the display was duplicated. Giving
   // the entry a stable key makes the second report replace the first.
@@ -1220,9 +1413,9 @@ export default function App() {
     });
   }
 
-  function askConfirmation(command) {
+  function askConfirmation(command, reason, does) {
     return new Promise((resolve) => {
-      const id = addEntry({ kind: "confirm", command });
+      const id = addEntry({ kind: "confirm", command, reason, does });
       confirmResolvers.current[id] = resolve;
     });
   }
@@ -1241,7 +1434,7 @@ export default function App() {
       prev.map((e) => (e.id === id ? { ...e, answered: true, chosen: option } : e))
     );
     if (option === null) {
-      // "Other" — let the user type what they actually want.
+      // "Other" - let the user type what they actually want.
       inputRef.current?.focus();
       return;
     }
@@ -1270,7 +1463,7 @@ export default function App() {
       idx += step;
     }
     if (idx >= list.length) {
-      // Past the newest entry — back to whatever was being typed.
+      // Past the newest entry - back to whatever was being typed.
       recallIdx.current = null;
       setValue(draft.current);
     } else {
@@ -1290,7 +1483,7 @@ export default function App() {
     const text = value.trim();
     if (!text || busy) return;
     remember(text);
-    // Bare "exit" closes the window. Exact match only — "exit window" or
+    // Bare "exit" closes the window. Exact match only - "exit window" or
     // "exit vim" are real requests and still go to the model.
     if (text.toLowerCase() === "exit") {
       setValue("");
@@ -1317,7 +1510,7 @@ export default function App() {
   // as if the user had typed it (the session's history makes it a follow-up
   // answer to the model's question).
   async function runRequest(text) {
-    // The box is about to be empty again — show something new in it rather
+    // The box is about to be empty again - show something new in it rather
     // than the hint that was already sitting there while they typed.
     nextHint();
     addEntry({ kind: "user", text });
@@ -1344,17 +1537,19 @@ export default function App() {
         } else {
           addEntry({ kind: "explanation", text: data.explanation });
         }
+        showNotice(data.notice);
         setStatus("ok");
         return;
       }
 
       addEntry({ kind: "explanation", text: data.explanation });
+      showNotice(data.notice);
 
       // None means run what the model wrote; a string is the user's own
       // version, which the session records as a correction.
       let edited = null;
       if (data.risk === "risky") {
-        const decision = await askConfirmation(data.command);
+        const decision = await askConfirmation(data.command, data.risk_reason, data.does);
         if (!decision.proceed) {
           addEntry({ kind: "skipped" });
           setStatus("ok");
@@ -1364,7 +1559,7 @@ export default function App() {
       }
 
       // Keep the dots up while the command (and, on failure, the model's
-      // explanation of why) runs — both can take a few seconds.
+      // explanation of why) runs - both can take a few seconds.
       const runningId = addEntry({ kind: "thinking" });
       const result = await window.pywebview.api.confirm(edited);
       setEntries((prev) => prev.filter((e) => e.id !== runningId));
@@ -1383,6 +1578,12 @@ export default function App() {
             path: result.path,
             items: result.listing,
             kindLabel: result.kind,
+          });
+        } else if (result.table) {
+          addEntry({
+            kind: "table",
+            columns: result.table.columns,
+            rows: result.table.rows,
           });
         } else if (result.output) {
           addEntry({ kind: "output", text: result.output });
@@ -1453,7 +1654,7 @@ export default function App() {
   }
 
   // A press on the output's scrollbar targets the scrolling element itself and
-  // lands past its content width — that gesture belongs to the scrollbar, not
+  // lands past its content width - that gesture belongs to the scrollbar, not
   // to the window. Anywhere else in the output still drags the panel.
   function onOutputPress(e) {
     if (e.target === e.currentTarget && e.nativeEvent.offsetX > e.currentTarget.clientWidth) {
@@ -1479,12 +1680,34 @@ export default function App() {
         onMouseMove={handleMouseMove}
       >
         <div className="panel-sheen" />
+        {/* Folded, the tile is all there is to say it with. Nothing is drawn
+            while the panel is open - the grid inside is already saying it. */}
+        {shownInstall && (
+          <TileRing
+            percent={shownInstall.percent}
+            title={
+              `${formatBytes(shownInstall.bytesDone)} of `
+              + `${formatBytes(shownInstall.bytesTotal)}`
+            }
+          />
+        )}
         {/* Kept mounted while collapsed rather than swapped out: everything on
-            screen — the conversation, a listing browsed three folders deep, a
-            half-typed line — has to be exactly where it was when the tile is
+            screen - the conversation, a listing browsed three folders deep, a
+            half-typed line - has to be exactly where it was when the tile is
             opened again. It is only moved out of the layout and faded. */}
         <div className="panel-body" ref={bodyRef} aria-hidden={minimized}>
-          {view === "settings" ? (
+          {/* The very first install takes the whole panel: there is no model
+              yet, so there is nothing else the window could usefully be. Any
+              later download is a line above a shell that still works, and is
+              handled further down beside the boot row. */}
+          {shownInstall && shownInstall.firstInstall ? (
+            <InstallPanel
+              install={shownInstall}
+              hint={hint}
+              hintShown={hintShown}
+              leaving={leaving}
+            />
+          ) : view === "settings" ? (
             <div className="settings">
               <div className="settings-head">
                 <span className="settings-title">Settings</span>
@@ -1537,6 +1760,63 @@ export default function App() {
                   <span className="switch-knob" />
                 </span>
               </button>
+              <div className="settings-label">Opacity</div>
+              <div className="volume-row">
+                <input
+                  type="range"
+                  min={MIN_OPACITY}
+                  max="100"
+                  value={opacity ?? 100}
+                  style={{
+                    "--fill": `${(((opacity ?? 100) - MIN_OPACITY) / (100 - MIN_OPACITY)) * 100}%`,
+                  }}
+                  onChange={(e) => dragOpacity(Number(e.target.value))}
+                  onMouseUp={(e) => saveOpacity(Number(e.target.value))}
+                  onKeyUp={(e) => saveOpacity(Number(e.target.value))}
+                  onMouseDown={keepGesture}
+                />
+                <span className="volume-value">{opacity ?? 100}%</span>
+              </div>
+              <div className="settings-label">Model</div>
+              {modelList.editable === false && (
+                <div className="model-note">
+                  This app is using a model server you started yourself, so the model is yours to choose.
+                </div>
+              )}
+              <div className="model-grid">
+                {(modelList.models || []).map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    disabled={m.current || modelList.editable === false}
+                    className={`model-row${m.current ? " active" : ""}${m.fits ? "" : " unfit"}`}
+                    onClick={() => switchModel(m)}
+                  >
+                    <span className="model-name">{m.label}</span>
+                    {/* Two separate facts, and both matter: what switching
+                        costs, and whether this machine runs it slower. A
+                        downloaded model is a free switch even where it
+                        doesn't fit, and one that doesn't fit is no longer
+                        unusable - as much of it as fits goes on the card. */}
+                    <span className="model-meta">
+                      {m.current
+                        ? "in use"
+                        : `${m.installed ? "downloaded" : `${m.weights_gb}GB download`}${
+                            m.speed === "partial"
+                              ? " · slower here"
+                              : m.speed === "poor"
+                              ? " · far too big"
+                              : ""
+                          }`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {modelList.model_dir && (
+                <div className="model-note">
+                  Models you've downloaded stay in {modelList.model_dir}, so switching back is instant.
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -1580,18 +1860,25 @@ export default function App() {
 
           {/* Only while the model server is coming up. Typing is deliberately
               still allowed: the request waits on the Python side and runs the
-              moment the server answers. */}
-          {booting && (
+              moment the server answers.
+
+              Two shapes, because the waits are two sizes. A weights download
+              runs for minutes and gets the strip; everything else a start
+              does - fetching llama.cpp, loading the model, a switch to
+              weights already on disk - keeps the line it has always had. */}
+          {shownInstall && !shownInstall.firstInstall ? (
+            <InstallRow install={shownInstall} />
+          ) : booting ? (
             <div className="boot-row">
               <ThinkingDots />
               <span className="boot-text">{booting}</span>
             </div>
-          )}
+          ) : null}
 
           {/* A new version is already downloaded and waiting. It is never
               applied without this click: the app closes, swaps itself out and
               comes back, which is not something to do to someone mid-thought.
-              Nothing here is dismissable because nothing here is urgent — the
+              Nothing here is dismissable because nothing here is urgent - the
               row goes away by being acted on, or by closing the app. */}
           {updateReady && (
             <div className="update-row">
@@ -1657,10 +1944,10 @@ export default function App() {
             at the tile says whether anything is still running. */}
         <button
           type="button"
-          className="mini-orb"
+          className={`mini-orb${tileBeat ? " beat" : ""}`}
           tabIndex={minimized ? 0 : -1}
           aria-hidden={!minimized}
-          title="Open — or drag to move it"
+          title="Open - or drag to move it"
           onMouseDown={onTilePress}
           onClick={onTileRelease}
         >
@@ -1670,7 +1957,7 @@ export default function App() {
             <>
               {/* Drawn rather than typed: the panel's "›" is a mono glyph, and
                   a glyph is centred by its advance box and its font's idea of
-                  where a quotation mark sits — neither of which is the middle
+                  where a quotation mark sits - neither of which is the middle
                   of a 48px tile. A path is exactly where it says it is. */}
               <svg className="mini-mark" viewBox="0 0 24 24" aria-hidden="true">
                 <defs>

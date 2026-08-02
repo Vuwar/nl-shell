@@ -24,7 +24,7 @@ requires_network = unittest.skipUnless(LIVE, "set AI_SHELL_LIVE_TESTS=1 to run")
 
 @requires_network
 class Reading(unittest.TestCase):
-    # Prose, tables, docs and a plain-text RFC — between them they cover the
+    # Prose, tables, docs and a plain-text RFC - between them they cover the
     # shapes the extractor has to survive.
     READABLE = [
         "https://en.wikipedia.org/wiki/Iceland",
@@ -57,7 +57,7 @@ class Reading(unittest.TestCase):
 
     def test_javascript_shells_are_rejected(self):
         # These return every label the page renders with the numbers left out
-        # for a script to fill in later — 322 and 359 characters of "Now------
+        # for a script to fill in later - 322 and 359 characters of "Now------
         # Feels Like HHigh LLow", which cleared the old 250 floor and went to
         # the model as though it were a forecast.
         for url in ("https://weather.com/en-FM/az/city/baku/today",
@@ -91,7 +91,7 @@ class Searching(unittest.TestCase):
 @requires_network
 @unittest.skipUnless(os.environ.get("AI_SHELL_LIVE_TESTS"), "")
 class EndToEnd(unittest.TestCase):
-    """Search, read, answer — with the real model. Needs a server running at
+    """Search, read, answer - with the real model. Needs a server running at
     config.BASE_URL; skipped rather than failed when there isn't one."""
 
     QUESTIONS = [

@@ -1,6 +1,6 @@
 """The model's weights: finding them, fetching them, and keeping what arrived.
 
-Until now llama-server did this itself — `-hf <repo>:<quant>` resolves,
+Until now llama-server did this itself - `-hf <repo>:<quant>` resolves,
 downloads and caches the GGUF. That worked until a connection dropped. Its
 downloader tries three times over six seconds, exits, and discards the partial
 file, so twelve minutes of downloading became nothing and the app could only
@@ -34,6 +34,7 @@ import urllib.error
 from dataclasses import dataclass
 
 from ai_shell import config, fetch
+from ai_shell.progress import Smoother
 
 API = "https://huggingface.co/api/models/{repo}?blobs=true"
 DOWNLOAD = "https://huggingface.co/{repo}/resolve/{revision}/{name}"
@@ -66,7 +67,7 @@ def _matching(names, quant):
 
     Anchored rather than a substring test: 'q6_k' is a substring of 'q6_k_l'
     and 'q4_k' of 'q4_k_m', so a contains-check answers a request for one
-    quantisation with a different one — several gigabytes of the wrong file,
+    quantisation with a different one - several gigabytes of the wrong file,
     with nothing failing until the model loads.
     """
     tag = re.escape(quant)
@@ -112,7 +113,7 @@ def resolve(ref):
     }
     unsplit, shards = _matching(siblings, quant)
 
-    # Repos routinely publish both packagings of identical weights — the
+    # Repos routinely publish both packagings of identical weights - the
     # default model has a 6.25GB file and the same bytes as two shards. One
     # file is one request, one checksum and no ordering to get wrong, so it
     # wins; the shard path exists for repos that publish nothing else.
@@ -120,6 +121,51 @@ def resolve(ref):
     if not chosen:
         raise WeightsError(f"{repo} publishes no {quant} .gguf file.")
     return revision, [_as_file(repo, revision, siblings[name]) for name in chosen]
+
+
+def present(ref):
+    """The already-downloaded weights for `ref` in the model folder, or None.
+
+    Offline by design, which is the whole reason it doesn't just call
+    resolve(): a settings screen listing six models must not make six
+    HuggingFace requests to find out which of them are on the disk it is
+    running from.
+
+    So the file name is matched instead. Every GGUF repo names its files after
+    itself - Qwen2.5-Coder-7B-Instruct-GGUF:Q6_K arrives as
+    qwen2.5-coder-7b-instruct-q6_k.gguf - and the quantisation is matched with
+    the same anchored test resolve uses, so a q4_k_m file is never mistaken
+    for the q4_k somebody asked for.
+
+    A guess, and treated as one: config.installed_models prefers the path a
+    finished download recorded, and only falls back here for weights fetched
+    by a build that kept no such record. Being wrong mislabels a row in a
+    list; it cannot cause a download, because ensure() skips any file already
+    on disk, and it cannot cause the wrong file to be loaded, because the path
+    llama-server is given always comes from ensure().
+    """
+    try:
+        repo, quant = _split_ref(ref)
+    except WeightsError:
+        return None
+
+    stem = repo.rsplit("/", 1)[-1]
+    if stem.lower().endswith("-gguf"):
+        stem = stem[: -len("-gguf")]
+
+    try:
+        names = os.listdir(config.MODEL_DIR)
+    except OSError:
+        return None  # no folder yet, or one we can't read: nothing is installed
+
+    prefix = f"{stem.lower()}-"
+    unsplit, shards = _matching(
+        [name for name in names if name.lower().startswith(prefix)], quant
+    )
+    # Same preference as resolve: one file beats a set of shards, and the
+    # first shard is what llama.cpp is pointed at when shards are all there is.
+    chosen = unsplit[:1] or shards[:1]
+    return os.path.join(config.MODEL_DIR, chosen[0]) if chosen else None
 
 
 # How many times a transfer is restarted before the user is told. Generous
@@ -175,11 +221,15 @@ def _check_space(pending):
         )
 
 
-def _download(file, path, label, before, total, say):
+def _download(file, path, label, before, total, say, emit):
     """Fetch one file into `path`, resuming and retrying until it verifies.
 
     `before` is how many bytes of the whole set are already accounted for, so
     the percentage counts the set rather than restarting at zero per shard.
+
+    `say` and `emit` are the same progress reported twice, at two different
+    rates. `say` is a line for a terminal and moves in whole percents; `emit`
+    is the desktop panel's payload and moves as often as fetch reports.
     """
     partial = path + ".partial"
     refetched = False
@@ -187,17 +237,35 @@ def _download(file, path, label, before, total, say):
 
     while True:
         attempt += 1
-        try:
-            fetch.download(
-                file.url,
-                partial,
-                lambda percent: say(
-                    f"Downloading {label} — "
-                    f"{(before + file.size * percent // 100) * 100 // total}% "
-                    f"({_gb(before + file.size * percent // 100)} of {_gb(total)} GB)"
-                ),
-                resume=True,
+        # Restarted per attempt, and seeded with what is already on disk: a
+        # resumed download that counted those bytes as having just arrived
+        # would open with a rate of several gigabytes a second.
+        smoother = Smoother(started_at=before + _size(partial))
+        said = [-1]
+
+        def progress(read, file_total):
+            done = min(before + read, total)
+            percent = done * 100 // total if total else 0
+            smoother.sample(done, time.monotonic())
+            emit(
+                "downloading",
+                bytes_done=done,
+                bytes_total=total,
+                percent=percent,
+                rate=smoother.rate,
+                eta=smoother.eta_for(total),
             )
+            # Whole percents only. fetch reports five times a second now, and
+            # this line goes to a terminal as well as to the window.
+            if percent != said[0]:
+                said[0] = percent
+                say(
+                    f"Downloading {label} - {percent}% "
+                    f"({_gb(done)} of {_gb(total)} GB)"
+                )
+
+        try:
+            fetch.download(file.url, partial, progress, resume=True)
         except fetch.FetchError as error:
             if not _retryable(error) or attempt >= ATTEMPTS:
                 raise WeightsError(
@@ -207,14 +275,29 @@ def _download(file, path, label, before, total, say):
                     "Start the app again and it picks up from there."
                 ) from None
             wait = BACKOFF[min(attempt - 1, len(BACKOFF) - 1)]
-            at = (before + _size(partial)) * 100 // total
+            done = before + _size(partial)
+            at = done * 100 // total
+            emit(
+                "retrying",
+                bytes_done=done,
+                bytes_total=total,
+                percent=at,
+                retry={"attempt": attempt + 1, "of": ATTEMPTS, "wait": wait},
+            )
             say(
-                f"Connection lost at {at}% — retrying in {wait}s "
+                f"Connection lost at {at}% - retrying in {wait}s "
                 f"(attempt {attempt + 1} of {ATTEMPTS})"
             )
             time.sleep(wait)
             continue
 
+        done = before + file.size
+        emit(
+            "verifying",
+            bytes_done=done,
+            bytes_total=total,
+            percent=done * 100 // total if total else 0,
+        )
         say("Checking the download…")
         if _sha256(partial) == file.sha256:
             # Renaming is what marks it verified. No separate state file can
@@ -229,24 +312,45 @@ def _download(file, path, label, before, total, say):
                 f"{file.name} failed its checksum twice, so the copy being served is "
                 "damaged rather than merely interrupted. Try again later."
             )
-        # Once is most likely a resume that stitched the wrong bytes — a proxy
+        # Once is most likely a resume that stitched the wrong bytes - a proxy
         # answering a range request with something else. That is repairable by
         # starting clean; twice is not, and looping on gigabytes is not a fix.
         refetched = True
         attempt = 0
-        say("The download didn't match its checksum — fetching it again from the start.")
+        emit(
+            "refetching",
+            bytes_done=before,
+            bytes_total=total,
+            percent=before * 100 // total if total else 0,
+        )
+        say("The download didn't match its checksum - fetching it again from the start.")
 
 
-def ensure(ref, label, on_status=None):
+def ensure(ref, label, on_status=None, on_progress=None):
     """The path to hand `llama-server -m`, downloading the weights if needed.
 
-    Raises WeightsError when they can't be had — the caller turns that into
+    Raises WeightsError when they can't be had - the caller turns that into
     the message the user sees.
+
+    `on_status` is a line for a human to read, and is called on every start.
+    `on_progress` is the same download as a dict, for an interface that draws
+    it rather than printing it, and is called only when there is a download:
+    a start that finds its weights already on disk emits nothing at all.
+    Only what this module can know goes into that payload, so there is
+    nothing about layers or graphics cards here - ai_shell.server merges
+    those in on the way past.
     """
     def say(message):
         if on_status:
             on_status(message)
 
+    def emit(phase, **fields):
+        if on_progress:
+            on_progress(dict(phase=phase, label=label, **fields))
+
+    # No payload yet. Resolving happens on every start, including the ones
+    # with nothing to fetch, and a payload here puts an install screen in
+    # front of somebody whose weights have been on the disk for weeks.
     say(f"Resolving {label}…")
     _, files = resolve(ref)
 
@@ -263,8 +367,19 @@ def ensure(ref, label, on_status=None):
         _check_space(pending)
         total = sum(file.size for file, _ in targets)
         before = sum(file.size for file, path in targets if os.path.exists(path))
+        # The opening frame, before a single byte is asked for. It is what
+        # makes a resumed download appear already part-filled instead of
+        # animating two gigabytes into place in the first half second.
+        emit(
+            "downloading",
+            bytes_done=before,
+            bytes_total=total,
+            percent=before * 100 // total if total else 0,
+            rate=None,
+            eta=None,
+        )
         for file, path in pending:
-            _download(file, path, label, before, total, say)
+            _download(file, path, label, before, total, say, emit)
             before += file.size
 
     # The first file, not any file: a sharded model is loaded by pointing

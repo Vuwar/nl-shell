@@ -1,6 +1,6 @@
 # Builds the app, and releases it when there's a release to cut. One file,
 # because "build it" and "release it" are the same pipeline with one extra step
-# on the end — splitting them meant every push to main ran two workflows, and
+# on the end - splitting them meant every push to main ran two workflows, and
 # each needed a rule for skipping the other one's commits.
 #
 # Every push to main and every pull request builds all four desktop targets and
@@ -9,7 +9,7 @@
 #
 # Releasing is separate from tagging, and nothing here fires on a tag.
 # release-please watches main, and for every release-worthy commit keeps a pull
-# request open — "chore(main): release 0.2.0" — carrying the version bump and
+# request open - "chore(main): release 0.2.0" - carrying the version bump and
 # the changelog for everything merged since the last release. Merging that PR
 # is the act of releasing:
 #
@@ -48,7 +48,7 @@
 # None of the desktop builds contain llama.cpp or a model. Those are fetched
 # into the user's own config folder on first run (see ai_shell/runtime.py),
 # which is what keeps a download in the tens of megabytes rather than the
-# thousands — and what lets an app update leave several gigabytes of
+# thousands - and what lets an app update leave several gigabytes of
 # already-downloaded weights alone.
 
 name: Build and release
@@ -75,12 +75,12 @@ permissions:
 
 jobs:
   # Keeps the release PR up to date, and on the run that merges it, tags and
-  # drafts the release. Does nothing on a pull request — the jobs below cope
+  # drafts the release. Does nothing on a pull request - the jobs below cope
   # with it being skipped.
   release-please:
     # Not on a pull request, where there is no release to keep track of. That
     # leaves the manual trigger able to run it, which is the way to re-sync a
-    # release PR that has gone stale — a draft release doesn't create its tag
+    # release PR that has gone stale - a draft release doesn't create its tag
     # until it's published, and until then release-please has nothing to
     # anchor to and will keep proposing the version after next.
     if: github.event_name != 'pull_request'
@@ -100,7 +100,7 @@ jobs:
           manifest-file: .release-please-manifest.json
 
   # The version number is worked out from commit subjects, so a subject that
-  # doesn't parse is a commit that silently counts for nothing — no bump, no
+  # doesn't parse is a commit that silently counts for nothing - no bump, no
   # changelog line. Checking the PR title is what catches that, because a
   # squash merge is what turns the title into the commit subject.
   #
@@ -124,7 +124,7 @@ jobs:
           cat <<'HELP'
 
           The version number and the changelog are generated from commit
-          subjects, and this one won't parse — merged as is, it would bump
+          subjects, and this one won't parse - merged as is, it would bump
           nothing and appear nowhere in the release notes.
 
             fix: window opens off-screen with two monitors     -> 0.1.0 to 0.1.1
@@ -143,7 +143,7 @@ jobs:
     # release-please is skipped on pull requests, and a job whose dependency
     # was skipped is skipped too unless it says otherwise. !cancelled() is what
     # says otherwise; the rest is "don't build if release-please actually
-    # failed", and "don't build the release PR" — it holds a version number and
+    # failed", and "don't build the release PR" - it holds a version number and
     # a changelog, no code, and GitHub makes runs on a bot-authored PR wait for
     # a human to approve them.
     if: ${{ !cancelled() && needs.release-please.result != 'failure' && !startsWith(github.head_ref || '', 'release-please--') }}
@@ -160,7 +160,7 @@ jobs:
           - os: ubuntu-22.04 # oldest still-supported image: binaries built
             target: linux-x64 # against a newer glibc won't run on older distros
     runs-on: ${{ matrix.os }}
-    # A retired runner label doesn't fail — the job queues for a runner that
+    # A retired runner label doesn't fail - the job queues for a runner that
     # will never come, and the default gives it six hours to not come. This is
     # how macos-13 announced its retirement, and thirty minutes is far more
     # than any of these builds has ever needed.
@@ -184,7 +184,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      # WebKit and GTK, which pip can't install — the same packages the README
+      # WebKit and GTK, which pip can't install - the same packages the README
       # tells a Linux user to install before running from source. The -dev ones
       # are only needed to build PyGObject against them.
       - name: Install GTK/WebKit (Linux)
@@ -275,7 +275,7 @@ jobs:
           if-no-files-found: error
 
   # The pip route. One job, not four: the wheel is pure Python and works
-  # everywhere — but it still has to be built on a machine with npm, because
+  # everywhere - but it still has to be built on a machine with npm, because
   # the React app it carries is a build product that isn't in the repository.
   python-package:
     needs: release-please

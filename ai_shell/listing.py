@@ -3,7 +3,7 @@
 Shells print for a console: attribute-flag columns, sizes in raw bytes, a
 timestamp on every row whether or not anyone wanted one. The interfaces can
 present that far better, but only if they get rows instead of pre-formatted
-text — so a listing command is re-projected to emit something parseable, and
+text - so a listing command is re-projected to emit something parseable, and
 the result is read back into dicts.
 
 Both of those halves depend on the OS and belong to ai_shell.platforms
@@ -37,7 +37,7 @@ def resolve_listed_paths(command, items):
     rows of the last listing.
 
     A follow-up like "open 08_IFOPE_20x30.jpg" becomes a command naming just
-    the file, which the shell resolves against its own working directory —
+    the file, which the shell resolves against its own working directory -
     wherever it happens to have been started, never the folder the user was
     just looking at. Only an argument that matches a listed name in full is
     replaced, so a name that merely appears inside a longer string (a URL, a
@@ -58,7 +58,7 @@ def resolve_listed_paths(command, items):
             quoted_double if quoted_double is not None else bare
         )
         path = by_name.get(text.lower())
-        # Parameters that take a name rather than a path are left alone —
+        # Parameters that take a name rather than a path are left alone -
         # expanding one to a full path would change what the command does
         # (PowerShell's -NewName, find's -name pattern).
         if path is None or current.NAME_PARAM.search(command[: match.start()]):
@@ -69,13 +69,13 @@ def resolve_listed_paths(command, items):
 
 
 def display_name(item):
-    """Shortcuts lose their .lnk/.url suffix — that extension is plumbing, not
+    """Shortcuts lose their .lnk/.url suffix - that extension is plumbing, not
     part of the name anyone uses for the thing."""
     return item["name"] if item["dir"] else _SHORTCUT.sub("", item["name"])
 
 
 def human_size(size):
-    """Bytes as KB/MB/GB — three significant-ish digits, never a wall of digits."""
+    """Bytes as KB/MB/GB - three significant-ish digits, never a wall of digits."""
     if size is None:
         return ""
     if size < 1024:
@@ -87,13 +87,37 @@ def human_size(size):
         value /= 1024
 
 
+def format_table(table):
+    """A parsed table as aligned columns for the console.
+
+    Sized to the widest value in each column rather than to a console width,
+    which is the whole point of having re-run the command: the shell's own
+    version was cut to eighty columns and lost the ends of the names.
+    """
+    columns, rows = table["columns"], table["rows"]
+    if not rows:
+        return "Nothing there."
+    widths = [
+        max(len(columns[index]), *(len(row[index]) for row in rows))
+        for index in range(len(columns))
+    ]
+
+    def line(cells):
+        return "  ".join(cell.ljust(width) for cell, width in zip(cells, widths)).rstrip()
+
+    return "\n".join(
+        [line(columns), line(["-" * width for width in widths])]
+        + [line(row) for row in rows]
+    )
+
+
 def format_listing(items, kind="item"):
     """Two aligned columns for the console: name, then size."""
     if not items:
         return "Nothing there." if kind == "item" else f"No {kind}s there."
     rows = [
         (display_name(item) + (os.sep if item["dir"] else ""),
-         "—" if item["dir"] else human_size(item["size"]))
+         "-" if item["dir"] else human_size(item["size"]))
         for item in items
     ]
     width = max(len(name) for name, _ in rows)

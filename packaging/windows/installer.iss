@@ -1,4 +1,4 @@
-; Inno Setup script — wraps the PyInstaller folder into one downloadable .exe.
+; Inno Setup script - wraps the PyInstaller folder into one downloadable .exe.
 ;
 ; Built by .github/workflows/release.yml after PyInstaller, but it runs by hand
 ; too once you have Inno Setup 6:
@@ -6,7 +6,7 @@
 ;     iscc /DAppVersion=0.1.0 /DDistDir="..\..\dist\AI Shell" packaging\windows\installer.iss
 ;
 ; Why an installer at all, when PyInstaller can emit a single .exe: a onefile
-; build unpacks its whole 40MB to a temp folder on every launch — seconds of
+; build unpacks its whole 40MB to a temp folder on every launch - seconds of
 ; delay, and a behaviour pattern antivirus heuristics dislike, which matters
 ; more than usual for an app whose job is running shell commands. This gets the
 ; same one-file download with none of that.
@@ -30,7 +30,7 @@
 #define AppExe "AI Shell.exe"
 
 [Setup]
-; Never change AppId — it's the identity Windows matches an upgrade against,
+; Never change AppId - it's the identity Windows matches an upgrade against,
 ; and a new one turns every future release into a second parallel install.
 AppId={{8F3A2D14-6C7B-4E59-9A2F-5D8E1B0C7A43}
 AppName={#AppName}
@@ -43,7 +43,7 @@ AppUpdatesURL={#AppUrl}/releases
 VersionInfoVersion={#VersionInfo}
 
 ; Per-user install: no UAC prompt, no administrator, and nothing written
-; outside the user's own profile. It matches how the app already behaves —
+; outside the user's own profile. It matches how the app already behaves -
 ; ai_shell.runtime installs llama.cpp into %APPDATA% rather than Program Files
 ; precisely so that none of this needs elevation.
 PrivilegesRequired=lowest
@@ -82,7 +82,7 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#StringChange(AppN
 [UninstallDelete]
 ; PyInstaller's folder only; the user's models and settings in %APPDATA%\ai-shell
 ; are deliberately left alone. Several gigabytes of downloaded weights should
-; not disappear because somebody uninstalled to reinstall a newer build — and
+; not disappear because somebody uninstalled to reinstall a newer build - and
 ; the README says where they are for anyone who does want them gone.
 Type: filesandordirs; Name: "{app}\_internal"
 
@@ -90,7 +90,7 @@ Type: filesandordirs; Name: "{app}\_internal"
 { ---- WebView2 ----------------------------------------------------------- }
 { The window is a WebView2 control. Windows 11 and any reasonably patched
   Windows 10 already have the Evergreen runtime, so this is a no-op for most
-  people — but where it's missing the app opens a blank window and says
+  people - but where it's missing the app opens a blank window and says
   nothing useful, which is a bad first five seconds. The bootstrapper is ~2MB
   and pulls the rest itself. }
 
@@ -106,7 +106,7 @@ var
   Version: String;
 begin
   { Machine-wide (the usual case, and 32-bit view on 64-bit Windows) or
-    per-user — a runtime installed either way is one we can use. }
+    per-user - a runtime installed either way is one we can use. }
   Result :=
     (RegQueryStringValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0')) or
     (RegQueryStringValue(HKLM, WebView2ClientKey, 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0')) or
@@ -137,8 +137,8 @@ begin
       DownloadPage.Download;
     except
       { Not fatal. The install is still perfectly good on a machine that gets
-        the runtime some other way — through Windows Update, or by the user
-        installing Edge — and refusing to continue over a failed optional
+        the runtime some other way - through Windows Update, or by the user
+        installing Edge - and refusing to continue over a failed optional
         download would be worse than letting them try. }
       if SuppressibleMsgBox(
         'The WebView2 runtime could not be downloaded:' + #13#10#13#10 + GetExceptionMessage + #13#10#13#10 +

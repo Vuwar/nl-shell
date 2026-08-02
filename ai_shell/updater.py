@@ -1,6 +1,6 @@
 """Keeping the app up to date without the user downloading anything again.
 
-The releases already exist — .github/workflows/build.yml attaches an installer,
+The releases already exist - .github/workflows/build.yml attaches an installer,
 a portable zip, a macOS bundle, a Linux tarball and a wheel to every GitHub
 release. What was missing was the app noticing. Until now a fix shipped on
 Tuesday reached a user whenever they next thought to visit the releases page,
@@ -9,7 +9,7 @@ which for most people is never.
 So: on launch, in the background, this asks GitHub what the latest release is.
 If it's newer than ai_shell.__version__ it downloads the one asset that matches
 how this copy was installed, and then stops and says so. Nothing is replaced
-until the user clicks Restart. That's the whole bargain — the download is
+until the user clicks Restart. That's the whole bargain - the download is
 automatic because it costs the user nothing to have it ready, and the install
 is not, because an app that runs shell commands should not swap itself out
 from under someone mid-sentence.
@@ -30,7 +30,7 @@ does is work out which of these it is:
   linux              The tarball's folder. Swap it.
   pip                Installed into a Python environment. pip installs the
                      new wheel over it.
-  source             A checkout. Never updated — that's what git is for.
+  source             A checkout. Never updated - that's what git is for.
 
 Why a script does the work
 --------------------------
@@ -38,7 +38,7 @@ Every one of those replaces files that the running process has open, which
 Windows forbids outright and which is merely a bad idea elsewhere. So applying
 an update is not something this process does: it writes a small shell script,
 starts it detached, and quits. The script waits for our process to disappear,
-does the swap, and starts the new version. It is deliberately dumb — no
+does the swap, and starts the new version. It is deliberately dumb - no
 Python, since a swapped-out app has no interpreter to rely on, and no branches
 beyond the ones baked in at write time.
 
@@ -67,7 +67,7 @@ RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 DOWNLOAD_DIR = os.path.join(config.CONFIG_DIR, "updates")
 
 # How long a check is good for. The point is to notice a release within a day
-# or so of it happening, not to poll GitHub — most launches should ask nothing.
+# or so of it happening, not to poll GitHub - most launches should ask nothing.
 CHECK_INTERVAL = 6 * 60 * 60  # seconds
 
 # How long the apply script waits for this process to exit before going ahead
@@ -96,7 +96,7 @@ def parse_version(text):
     The fourth field is the release/pre-release flag, and it sorts the way
     semver says: a pre-release is *older* than the release it leads to, so
     0.2.0-rc1 must lose to 0.2.0. Tuples compare left to right, so 0 for a
-    pre-release and 1 for a final release puts them in that order — and the
+    pre-release and 1 for a final release puts them in that order - and the
     suffix itself only breaks ties between two pre-releases of the same
     version, where asciibetical order is close enough to be useful and wrong
     only for people numbering past rc9.
@@ -132,7 +132,7 @@ def _macos_bundle():
     """The .app this is running out of, or None.
 
     sys.executable inside a bundle is Contents/MacOS/AI Shell, so the bundle
-    is three levels up — checked rather than assumed, because the same frozen
+    is three levels up - checked rather than assumed, because the same frozen
     build also runs as a plain folder during development.
     """
     bundle = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(sys.executable))))
@@ -168,7 +168,7 @@ def detect_channel():
 def install_root():
     """The folder an update replaces, for the channels that replace one.
 
-    The .app on macOS, and the folder holding the executable everywhere else —
+    The .app on macOS, and the folder holding the executable everywhere else -
     which for a PyInstaller onedir build is the whole of what was shipped.
     """
     channel = detect_channel()
@@ -220,7 +220,7 @@ def check(force=False):
 
     None covers every kind of "nothing to do": already current, a channel that
     doesn't update itself, updates switched off, a release with no asset this
-    machine can use, and — via the caller's except — GitHub being unreachable.
+    machine can use, and - via the caller's except - GitHub being unreachable.
     A dict when there is one:
 
         {"version", "tag", "url", "name", "channel", "notes_url"}
@@ -231,7 +231,7 @@ def check(force=False):
 
     if not force and time.time() - (config.LAST_UPDATE_CHECK or 0) < CHECK_INTERVAL:
         # Checked recently. If that check found something and it's still
-        # sitting in the downloads folder, it's still an update — the point of
+        # sitting in the downloads folder, it's still an update - the point of
         # the interval is not asking GitHub again, not forgetting the answer.
         return _staged_update(channel)
 
@@ -269,8 +269,8 @@ def check(force=False):
 def _staged_update(channel):
     """An update already downloaded on an earlier launch, or None.
 
-    Quitting without clicking Restart is the normal case — people close this
-    panel constantly — and re-downloading the same 40MB on every launch that
+    Quitting without clicking Restart is the normal case - people close this
+    panel constantly - and re-downloading the same 40MB on every launch that
     follows would be a poor way to repay that.
     """
     suffix = asset_suffix(channel)
@@ -299,7 +299,7 @@ def _version_from_asset(name, suffix):
     digits, because a pre-release tag and a platform tag are the same shape to
     a regex: 0.2.0-rc1-windows-x64.zip has to yield 0.2.0-rc1, and
     0.2.0-windows-x64.zip has to yield 0.2.0. Cutting the part whose spelling
-    is already known settles it — what's left ends with the version.
+    is already known settles it - what's left ends with the version.
     """
     stem = name[: -len(suffix)] if suffix and name.endswith(suffix) else name
     match = re.search(r"[-_](\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.]+)?)$", stem)
@@ -320,8 +320,20 @@ def stage(update, on_progress=None):
 
     if update.get("url") and not os.path.exists(downloaded):
         partial = downloaded + ".partial"
+
+        # fetch reports raw bytes five times a second now. What leaves here is
+        # still a percentage that changes at most a hundred times, because it
+        # ends up in a status dict the window polls.
+        said = [-1]
+
+        def progress(read, total):
+            percent = read * 100 // total if total else 0
+            if percent != said[0] and on_progress:
+                said[0] = percent
+                on_progress(percent)
+
         try:
-            fetch.download(update["url"], partial, on_progress)
+            fetch.download(update["url"], partial, progress)
             os.replace(partial, downloaded)
         except (fetch.FetchError, OSError) as error:
             _remove(partial)
@@ -339,8 +351,8 @@ def _sweep_downloads(keep):
     """Delete everything in the downloads folder except `keep` and the apply
     script.
 
-    An update that's downloaded but never installed is the normal case — this
-    panel gets closed constantly — so without this, every release anyone
+    An update that's downloaded but never installed is the normal case - this
+    panel gets closed constantly - so without this, every release anyone
     skipped would still be on their disk.
     """
     try:
@@ -358,7 +370,7 @@ def _unpack(update):
     unpacked app.
 
     Next to it, rather than in the downloads folder, so that applying the
-    update is a rename within one directory — which is atomic, instant, and
+    update is a rename within one directory - which is atomic, instant, and
     can't fail halfway across a drive boundary with half an app at each end.
     """
     root = install_root()
@@ -391,7 +403,7 @@ def _unpack(update):
         _remove(staging)
         raise UpdateError(str(error)) from None
 
-    # Every one of these archives holds exactly one top-level folder — the
+    # Every one of these archives holds exactly one top-level folder - the
     # app. More than one means the packaging changed and this code hasn't.
     entries = [os.path.join(staging, name) for name in os.listdir(staging)]
     tree = entries[0] if len(entries) == 1 and os.path.isdir(entries[0]) else None
@@ -419,7 +431,7 @@ def relaunch_argv():
         return [sys.executable]
 
     # pip. The console script is the thing on PATH and the thing pip just
-    # rewrote, so it's what to run — unless this was started as a script, in
+    # rewrote, so it's what to run - unless this was started as a script, in
     # which case that script is still the entry point it was.
     argv0 = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
     if argv0.endswith(".py") and os.path.exists(argv0):
@@ -432,7 +444,7 @@ def relaunch_argv():
 def apply(update, relaunch=None):
     """Write the apply script, start it detached, and return.
 
-    The caller must then quit — promptly, because the script is already
+    The caller must then quit - promptly, because the script is already
     watching for that. `relaunch` is the argv to start afterwards; [] for a
     console session, where a new window nobody asked for is worse than none.
     """
@@ -517,7 +529,7 @@ def _windows_script(update, relaunch):
             f'if exist "{old}" rmdir /s /q "{old}"',
             f'move "{root}" "{old}" >nul',
             # If the move failed the old app is still there and still works,
-            # which is the good outcome of a bad situation — start it and stop.
+            # which is the good outcome of a bad situation - start it and stop.
             "if errorlevel 1 goto giveup",
             f'move "{update["tree"]}" "{root}" >nul',
             f'if errorlevel 1 move "{old}" "{root}" >nul',
@@ -532,7 +544,7 @@ def _windows_script(update, relaunch):
         # quoted path as the title and opens a console instead of the app.
         lines.append('start "" ' + " ".join(f'"{part}"' for part in relaunch))
     # Deleting the script while cmd is still reading it leaves it looking for
-    # the next line of a file that has gone — an error nobody sees, since this
+    # the next line of a file that has gone - an error nobody sees, since this
     # runs detached, but an error all the same. The (goto) makes cmd give up
     # its read handle first, and & keeps the delete on the same line, which is
     # the last line cmd ever reads.
@@ -614,7 +626,7 @@ class Updater:
 
     def start(self):
         """Begin checking, in the background. Safe to call when updates are
-        off or this is a checkout — it just finds nothing to do."""
+        off or this is a checkout - it just finds nothing to do."""
         threading.Thread(target=self._run, daemon=True).start()
 
     def _set(self, state, **fields):
@@ -659,7 +671,7 @@ class Updater:
 
     def status(self):
         """{"state": idle|checking|downloading|ready|failed, "version",
-        "message", "notes_url"} — a snapshot, safe to poll."""
+        "message", "notes_url"} - a snapshot, safe to poll."""
         with self._lock:
             return dict(self._state)
 
@@ -667,7 +679,7 @@ class Updater:
         """Start the apply script. The caller quits immediately afterwards.
 
         Returns {"ok": True} once the script is running, or {"ok": False,
-        "error"} — in which case nothing has been touched and the app should
+        "error"} - in which case nothing has been touched and the app should
         carry on as it was.
         """
         with self._lock:

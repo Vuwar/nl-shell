@@ -6,14 +6,14 @@
 # is per-user, so nothing here needs an administrator and nothing lands outside
 # your own profile.
 #
-# Two knobs, both optional — set them before piping to iex:
+# Two knobs, both optional - set them before piping to iex:
 #
 #     $env:AI_SHELL_VERSION = "0.1.0"   install a specific release
 #     $env:AI_SHELL_PORTABLE = "1"      unpack the zip instead of running the
 #                                       installer: no Start Menu entry, no
 #                                       uninstall entry, just a folder
 #
-# What this does NOT download is the model — several gigabytes that the app
+# What this does NOT download is the model - several gigabytes that the app
 # fetches into %APPDATA%\ai-shell the first time you run it, so that
 # reinstalling the app doesn't mean downloading the weights again.
 
@@ -57,7 +57,7 @@ try {
     $download = Join-Path $tmp $asset.name
     Write-Host "Downloading $($asset.name) ($([math]::Round($asset.size / 1MB)) MB)..."
     # Invoke-WebRequest's progress bar makes the download several times slower
-    # in 5.1 — it repaints the console on every chunk.
+    # in 5.1 - it repaints the console on every chunk.
     $previous = $ProgressPreference
     $ProgressPreference = "SilentlyContinue"
     try {

@@ -1,4 +1,4 @@
-"""ai_shell.llm.answer_from_search — reading the model's reply, and the one
+"""ai_shell.llm.answer_from_search - reading the model's reply, and the one
 retry it gets when it makes a date up."""
 
 import json
@@ -112,7 +112,7 @@ class InventedDateRetry(unittest.TestCase):
 
 class Unreachable(unittest.TestCase):
     def test_a_model_that_cannot_be_reached_is_not_an_error(self):
-        # The caller shows the results by themselves — a worse answer, never
+        # The caller shows the results by themselves - a worse answer, never
         # a wrong one.
         self.assertIsNone(answer_from_search(DeadClient(), "q", "b", NEUTRAL))
 

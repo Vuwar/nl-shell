@@ -1,7 +1,7 @@
 /* Layout note: .panel-body must size to its CONTENT, never to the window.
    The resize hook observes the body's height and animates the OS window to
    match; if the body were height:100% it could never outgrow the window and
-   output would clip (the old bug). So it has no fixed height — and a fixed
+   output would clip (the old bug). So it has no fixed height - and a fixed
    width, so a window mid-fold can't reflow the measurement out from under it.
    The panel around it is the window: it fills whatever the fold has left. */
 .shell {
@@ -16,16 +16,21 @@
   min-height: 100vh;
   border-radius: var(--radius);
   background: var(--glass-tint), var(--glass-base);
-  /* Edge lines are invisible at rest — the panel reads as a borderless glass
-     slab — and only light up while the input is focused. Border stays 1px so
-     nothing shifts when it appears. */
-  border: 1px solid transparent;
+  /* Edge lines are invisible at rest - the panel reads as a borderless glass
+     slab - and only light up while the input is focused. Border stays 1px so
+     nothing shifts when it appears.
+
+     Except when the window is see-through: an invisible edge against a dark
+     desktop is a borderless slab, and against a photograph it's a panel with
+     no edge at all. The fainter the window, the more edge it gets back. At
+     full opacity this is exactly transparent, as before. */
+  border: 1px solid rgba(255, 255, 255, calc((1 - var(--panel-alpha)) * 0.2));
   box-shadow: none;
   /* clip, not hidden: `hidden` still makes this a scroll container, and the
      panel has somewhere to scroll to (the sheen parks itself 900px off to the
      right). Focusing the input while the window is mid-unfold and only 48px
      wide then scrolls the panel sideways to reveal it, and nothing scrolls it
-     back — the whole panel ends up shifted left for good. `clip` isn't a
+     back - the whole panel ends up shifted left for good. `clip` isn't a
      scroll container at all, so there is nothing to scroll. Engines too old
      for it drop the line and keep `hidden` above; the unfold also resets the
      scroll for those. */
@@ -37,11 +42,11 @@
 }
 
 .panel-body {
-  /* Pinned, not stretched — see the layout note at the top of this file. */
+  /* Pinned, not stretched - see the layout note at the top of this file. */
   width: var(--panel-w);
   /* And never compressed: the panel is as tall as the window, so a flex item
      free to shrink would be squeezed to fit the window it is supposed to be
-     telling how tall to be — new output would measure as no taller than the
+     telling how tall to be - new output would measure as no taller than the
      window already is, and the panel would never grow again. */
   flex: 0 0 auto;
   display: flex;
@@ -78,8 +83,12 @@
   transition: opacity 350ms ease;
 }
 
+/* Faded out as the window goes see-through: the highlight is meant to read as
+   light bending through glass, and over somebody's wallpaper rather than a
+   dark panel it reads as a smudge on the screen. Gone by the bottom of the
+   slider (30%), untouched at the top. */
 .panel:hover::before {
-  opacity: 1;
+  opacity: calc((var(--panel-alpha) - 0.3) / 0.7);
 }
 
 .panel.focused {
@@ -185,7 +194,7 @@
   box-shadow: 0 0 0 2px rgba(16, 14, 24, 0.7), 0 0 7px var(--danger-soft);
 }
 
-/* Nothing to report — idle, or thinking (which the dots already say). */
+/* Nothing to report - idle, or thinking (which the dots already say). */
 .mini-badge.idle,
 .mini-badge.thinking {
   display: none;
@@ -193,7 +202,7 @@
 
 .panel.mini {
   border-color: rgba(255, 255, 255, 0.1);
-  /* Lit top edge — the specular line a small piece of glass would catch. */
+  /* Lit top edge - the specular line a small piece of glass would catch. */
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1) inset;
 }
 
@@ -277,7 +286,7 @@
 }
 
 /* The real input handles caret, selection and editing, but its glyphs are
-   transparent — .input-mirror paints the visible text so every character can
+   transparent - .input-mirror paints the visible text so every character can
    animate in. Font metrics must stay identical between the two layers. */
 .input-row input {
   width: 100%;
@@ -362,7 +371,7 @@
   opacity: 0.34;
 }
 
-/* The outgoing half of a swap — see HINT_FADE in App.jsx. */
+/* The outgoing half of a swap - see HINT_FADE in App.jsx. */
 .input-hint.out {
   opacity: 0;
   transform: translateY(-3px);
@@ -391,7 +400,7 @@
   }
 
   /* The window snaps between the two shapes (useWindowGeometry drops its
-     easing too), so the tile has nothing left to fold out of — it just is. */
+     easing too), so the tile has nothing left to fold out of - it just is. */
   .mini-orb,
   .panel.mini .mini-orb,
   .panel.mini:hover .mini-orb,
@@ -570,13 +579,89 @@
   color: var(--text-dim);
 }
 
+/* One row per model, the same card treatment as .theme-card but laid out
+   along the row: the name matters and the size is a footnote. */
+.model-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.model-row:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.model-row:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
+}
+
+.model-row.active {
+  border-color: rgba(139, 123, 255, 0.55);
+  background: linear-gradient(180deg, rgba(139, 123, 255, 0.16), rgba(139, 123, 255, 0.07));
+}
+
+/* Held back rather than struck out. A model bigger than the card still runs -
+   the part that fits goes on the card - so this is "slower", not "no". */
+.model-row.unfit {
+  opacity: 0.72;
+}
+
+.model-row:disabled {
+  cursor: default;
+}
+
+.model-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.model-meta {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.model-note {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* The graphics-card explanation. An aside, not a failure: bordered rather
+   than coloured, so it doesn't read as something having gone wrong. */
+.entry-notice {
+  margin: 6px 0 2px;
+  padding: 7px 10px;
+  border-left: 2px solid rgba(139, 123, 255, 0.5);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
 .volume-row {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-/* Whole row is the control — a 34px track is a small thing to ask someone to
+/* Whole row is the control - a 34px track is a small thing to ask someone to
    hit when the label next to it means exactly the same. */
 .switch-row {
   display: flex;
@@ -692,7 +777,7 @@
 }
 
 /* Only up while the model server starts. The window opens before the model is
-   loaded, so this is the panel saying what it's waiting for — same dim italic
+   loaded, so this is the panel saying what it's waiting for - same dim italic
    as a system line, and the same top rule as anything else that appears under
    the input row. */
 .boot-row {
@@ -721,7 +806,7 @@
 
 /* --- update ready --------------------------------------------------------
    Same shape as the boot row, because it's the same kind of thing: a line the
-   panel grew to say something about itself. Not styled as an alert — an
+   panel grew to say something about itself. Not styled as an alert - an
    update that has already downloaded is good news sitting quietly, and the
    only urgency an app should manufacture about itself is none. */
 .update-row {
@@ -958,6 +1043,74 @@
   box-sizing: border-box;
 }
 
+/* Tabular output. Scrolls sideways on its own rather than stretching the
+   panel, because a table with six columns must not decide how wide the
+   conversation is. */
+.table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  /* Without this the table vanishes as soon as anything is typed after it.
+     .output is a flex column with a max-height, so every entry is a flex
+     item - and a flex item whose overflow isn't visible has an automatic
+     minimum size of zero instead of its content height. Setting overflow-x
+     to make wide tables scroll sideways is what opts this one in: it becomes
+     the only entry in the conversation that flex is allowed to crush, so the
+     moment the output is over its max-height the table is squeezed to a
+     sliver of its own scrollbar while every text entry keeps its size.
+     Refusing to shrink puts the overflow back where it belongs, on .output,
+     which already scrolls. */
+  flex-shrink: 0;
+}
+
+.result-table {
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.result-table th,
+.result-table td {
+  text-align: left;
+  padding: 3px 14px 3px 0;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.result-table th {
+  font-weight: 600;
+  color: var(--text-dim, var(--text));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  padding-bottom: 5px;
+}
+
+.result-table tbody tr:first-child td {
+  padding-top: 5px;
+}
+
+/* What the command does, in words, between the command and the decision.
+   Same tinted panel as the command above it and the question below, with no
+   rounding of its own, so the three read as one block rather than as an
+   aside. Proportional type, not mono: this is the half meant to be read
+   rather than inspected. */
+.confirm-does {
+  margin: 0;
+  padding: 8px 12px 10px 30px;
+  list-style: disc;
+  font-family: var(--ui);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim, var(--text));
+  background: rgba(255, 107, 107, 0.08);
+  border-left: 1px solid rgba(255, 107, 107, 0.2);
+  border-right: 1px solid rgba(255, 107, 107, 0.2);
+}
+
+.confirm-does li {
+  word-break: break-word;
+}
+
 .confirm-edit:focus {
   border-color: rgba(255, 107, 107, 0.45);
 }
@@ -998,7 +1151,7 @@
 
 /* A failed model start. The button shares the line with the message rather
    than sitting in a button row of its own, so the error stays one thing on
-   screen — and the message runs to several lines, hence the top alignment. */
+   screen - and the message runs to several lines, hence the top alignment. */
 .error-line {
   display: flex;
   align-items: flex-start;
@@ -1042,7 +1195,7 @@ pre.output-block {
   padding: 3px 9px;
   cursor: pointer;
   white-space: nowrap;
-  /* Present but quiet — findable without competing with the output itself. */
+  /* Present but quiet - findable without competing with the output itself. */
   opacity: 0.45;
   transition: opacity 160ms ease, color 160ms ease, border-color 160ms ease,
     background 160ms ease;
@@ -1141,7 +1294,7 @@ pre.output-block {
 }
 
 /* Rows are buttons, so they can't be display:contents cells of one shared
-   grid — a contents box can't paint a hover state. Fixed column widths keep
+   grid - a contents box can't paint a hover state. Fixed column widths keep
    them aligned instead, with the name taking whatever is left. */
 .listing-row {
   display: flex;
@@ -1308,7 +1461,7 @@ pre.output-block {
 }
 
 /* The small-model warning. Sits between the answer and its sources because
-   that's the order it has to be read in — the sentence above may be wrong,
+   that's the order it has to be read in - the sentence above may be wrong,
    the links below are not. Warm rather than red: nothing has failed. */
 .answer-caveat {
   font-size: 11.5px;
@@ -1325,7 +1478,7 @@ pre.output-block {
   flex-direction: column;
 }
 
-/* Same full-bleed hover as a listing row — these are the same gesture (click
+/* Same full-bleed hover as a listing row - these are the same gesture (click
    the thing to open it), so they shouldn't look like a different one. */
 .answer-source {
   display: flex;
@@ -1374,7 +1527,7 @@ pre.output-block {
 }
 
 /* Marks a source whose page was actually opened, rather than one the answer
-   only saw a search-engine teaser of. Deliberately quiet — it's a detail for
+   only saw a search-engine teaser of. Deliberately quiet - it's a detail for
    someone weighing the answer, not something to read on the way past. */
 .source-read {
   font-family: var(--ui);

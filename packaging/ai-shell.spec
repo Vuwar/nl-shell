@@ -13,7 +13,7 @@
 # compare when they sit next to each other.
 #
 # --onedir, not --onefile. A onefile build unpacks itself to a temp directory
-# on every launch, which costs seconds and looks like malware to a scanner —
+# on every launch, which costs seconds and looks like malware to a scanner -
 # and this app runs shell commands, so it starts that argument at a
 # disadvantage. Users still download one file: the Windows job wraps this
 # folder in an installer, and macOS ships it as a .app.
@@ -54,7 +54,7 @@ def icon_for(extension):
 
 # --- what goes in besides the code ------------------------------------------
 datas = [
-    # The built React app. The destination has to mirror the source layout —
+    # The built React app. The destination has to mirror the source layout -
     # ai_shell_gui/app.py looks for ai_shell_gui/frontend/dist under
     # sys._MEIPASS.
     (os.path.join(ROOT, "ai_shell_gui", "frontend", "dist"), os.path.join("ai_shell_gui", "frontend", "dist")),
@@ -76,7 +76,7 @@ else:
     hiddenimports = ["webview.platforms.gtk"]
 
 # ai_shell.platforms picks its own class the same way. These are cheap and
-# pure-Python, so all three are kept rather than trimmed to the current one —
+# pure-Python, so all three are kept rather than trimmed to the current one -
 # it keeps the bundle honest about what the package contains.
 hiddenimports += collect_submodules("ai_shell")
 
@@ -88,7 +88,7 @@ excludes = [
     # the Qt bindings through pywebview's other backend. The data-science stack
     # is the openai package's doing: it names pandas, numpy and PIL in
     # type-checking and lazy-extra branches that never execute here, but that
-    # PyInstaller's static analysis can't tell apart from real imports — and
+    # PyInstaller's static analysis can't tell apart from real imports - and
     # pandas then drags in pyarrow, which alone was half the build.
     #
     # A clean virtualenv wouldn't have most of these installed to find, but the

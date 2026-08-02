@@ -2,16 +2,16 @@
 
 Three sources, most specific first:
 
-  1. an environment variable — a one-off override, for trying something
+  1. an environment variable - a one-off override, for trying something
      without editing anything;
-  2. settings.json in the per-user config folder — what the settings screen
+  2. settings.json in the per-user config folder - what the settings screen
      writes, and what persists;
   3. a default worked out from the machine on first run, then written to (2)
      so it's only worked out once.
 
 The third is the reason this file is no longer four constants. A model that
 fits the developer's laptop is not a model that fits everyone's, and the
-project can't know which machine it's on until it's on one — so the first
+project can't know which machine it's on until it's on one - so the first
 launch measures, chooses, and records. See ai_shell.models for the list it
 chooses from and ai_shell.hardware for the measuring.
 
@@ -26,6 +26,7 @@ import os
 # is reached through ai_shell/__init__.py importing Session, so the package
 # object is still half-built when these run and has no attributes yet.
 import ai_shell
+import ai_shell.fit as fit
 import ai_shell.hardware as hardware
 import ai_shell.models as models
 from ai_shell.platforms import current
@@ -43,6 +44,34 @@ DEFAULT_PORT = 8080
 # budgeted for, so it isn't scaled up on big machines.
 DEFAULT_CONTEXT = 8192
 
+# How opaque the desktop window is, as a percentage. 92 is a panel that reads
+# as glass over a wallpaper without anyone having to go looking for the
+# setting. The floor is well below what's comfortable to read on purpose: how
+# see-through is too see-through depends on the wallpaper, and the slider that
+# sets this lives in a settings screen the user can always get back to.
+DEFAULT_OPACITY = 92
+MIN_OPACITY = 30
+
+
+def _clamp_opacity(raw):
+    """`raw` as a whole percent inside the allowed range.
+
+    Anything that isn't a number is the default rather than an error: this
+    reads a slider position out of a JSON file the user is free to edit, and
+    a window that refuses to open over a typo is worse than a window at 92%.
+    """
+    try:
+        value = round(float(raw))
+    except (TypeError, ValueError):
+        return DEFAULT_OPACITY
+    return max(MIN_OPACITY, min(100, value))
+
+
+def _opacity_setting(environ, settings):
+    """The opacity to open at - an environment override first, then what the
+    settings screen last wrote, then the default."""
+    return _clamp_opacity(environ.get("AI_SHELL_OPACITY") or settings.get("opacity"))
+
 
 def _read_settings():
     try:
@@ -57,7 +86,7 @@ def _read_settings():
 
 def _write_settings(data):
     """Best-effort persist. A read-only config folder is not a reason to
-    refuse to start — it only means the hardware probe runs again next time."""
+    refuse to start - it only means the hardware probe runs again next time."""
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
         with open(SETTINGS_PATH, "w", encoding="utf-8") as handle:
@@ -67,7 +96,7 @@ def _write_settings(data):
 
 
 def _resolve():
-    """(settings, model, first_run) — the stored settings brought up to date
+    """(settings, model, first_run) - the stored settings brought up to date
     with a model that exists, probing the machine only if nothing valid is
     recorded yet."""
     settings = _read_settings()
@@ -79,14 +108,37 @@ def _resolve():
     # Either a first run, or a model id that no longer exists because the
     # registry changed under a settings file written by an older build.
     probed = hardware.probe()
-    model = models.recommend(probed["ram_gb"], probed["vram_gb"])
+    model = models.recommend(probed["ram_gb"], probed["vram_gb"], probed.get("vram_shared", False))
     settings["model"] = model.id
     settings["hardware"] = probed
     _write_settings(settings)
     return settings, model, True
 
 
+def _oversized(model, settings):
+    """Whether the recorded model is too big for the card it was chosen for.
+
+    True only for the permanent mismatch - a card that cannot hold this model
+    however much the user closes. It is reported, never acted on: the model
+    the user has been running is not something to replace out from under them
+    because a rule changed under their settings file.
+    """
+    machine = settings.get("hardware") or {}
+    return fit.verdict(
+        model,
+        machine.get("vram_gb"),
+        None,
+        machine.get("vram_shared", False),
+    ) == "oversized"
+
+
 _SETTINGS, _MODEL, FIRST_RUN = _resolve()
+
+# Whether the model this app is about to run cannot fit the card it was chosen
+# for. Set for settings files written before the GPU budget reserved anything
+# for the desktop. Nothing is changed on the strength of it - the interfaces
+# raise it with the user, who decides.
+MODEL_OVERSIZED = _oversized(_MODEL, _SETTINGS)
 
 # What the machine was found to have, for the settings screen to show next to
 # the model list. Read back from settings rather than re-probed: this has to
@@ -123,19 +175,25 @@ PORT = int(os.environ.get("AI_SHELL_PORT") or _SETTINGS.get("port") or DEFAULT_P
 CONTEXT_SIZE = int(os.environ.get("AI_SHELL_CONTEXT") or _SETTINGS.get("context") or DEFAULT_CONTEXT)
 
 # Where the llama-server executable is. The bare name means "on PATH", which
-# is what a normal install looks like — and when it isn't there either,
+# is what a normal install looks like - and when it isn't there either,
 # ai_shell.runtime fetches one into CONFIG_DIR rather than failing.
 _NAMED_SERVER = os.environ.get("AI_SHELL_SERVER") or _SETTINGS.get("server_binary")
 SERVER_BINARY = _NAMED_SERVER or "llama-server"
 
-# Whether that name came from the user. A build somebody chose deliberately —
-# a CUDA one, a local compile — must be used as given and never quietly
+# Whether that name came from the user. A build somebody chose deliberately -
+# a CUDA one, a local compile - must be used as given and never quietly
 # replaced by one we downloaded, so this is what turns the auto-install off.
 SERVER_BINARY_EXPLICIT = bool(_NAMED_SERVER)
 
 # Which llama.cpp release was installed for us, if any. Recorded so the engine
 # isn't silently swapped underneath the user on some later launch.
 RUNTIME_RELEASE = _SETTINGS.get("llama_cpp_release")
+
+# --- the desktop window ---------------------------------------------------
+# Read by ai_shell_gui before the window is shown. It has to be settled that
+# early: applying it after the first paint is a visible flash of solid panel
+# on every launch. The CLI ignores it.
+OPACITY = _opacity_setting(os.environ, _SETTINGS)
 
 # --- updating the app itself ----------------------------------------------
 # What this build calls itself, for ai_shell.updater to compare against the
@@ -159,7 +217,7 @@ LAST_UPDATE_CHECK = _SETTINGS.get("update_checked_at") or 0
 
 # Whether an edited command is recorded to CONFIG_DIR/corrections.jsonl. On by
 # default, and unlike anything that reads existing shell history this only sees
-# commands typed into this app, in this session, on their way to running — it
+# commands typed into this app, in this session, on their way to running - it
 # never leaves the machine. Off by default would collect nothing, which is the
 # same as not having the feature. See ai_shell/corrections.py for what a record
 # holds and what is scrubbed out of it first.
@@ -171,15 +229,22 @@ CORRECTIONS = (os.environ.get("AI_SHELL_CORRECTIONS") or "").strip() != "0" and 
 # Deciding here rather than passing -1 always: llama.cpp will happily offload
 # part of a model that doesn't fit, which is slower than not offloading at all
 # because every token then crosses the bus twice.
+#
+# The budget is fit.usable_vram_gb, not the card's total, so a model recorded
+# by an older build that cannot fit runs on the CPU instead of being paged
+# across the bus. On the machine this was written for that is roughly 4 tokens
+# a second rather than 0.8 - and it makes the warning's "runs from ordinary
+# memory" literally true.
 _VRAM = HARDWARE.get("vram_gb")
-GPU_LAYERS = -1 if _VRAM and _VRAM >= _MODEL.footprint_gb else 0
+_SHARED = HARDWARE.get("vram_shared", False)
+GPU_LAYERS = -1 if _VRAM and fit.usable_vram_gb(_VRAM, _SHARED) >= _MODEL.footprint_gb else 0
 
 _ENV_BASE_URL = os.environ.get("AI_SHELL_BASE_URL")
 BASE_URL = _ENV_BASE_URL or f"http://{HOST}:{PORT}/v1"
 
 # Whether to start and stop the server ourselves. Pointing AI_SHELL_BASE_URL
-# somewhere is a statement that something is already running there — an Ollama
-# install, a shared box, a llama-server with hand-picked flags — and spawning
+# somewhere is a statement that something is already running there - an Ollama
+# install, a shared box, a llama-server with hand-picked flags - and spawning
 # a second server to ignore would be both wasteful and confusing.
 MANAGED_SERVER = _ENV_BASE_URL is None
 
@@ -191,25 +256,111 @@ API_KEY = "local"
 # Reading web results and saying what they mean is the one job here where a
 # small model fails without looking like it failed (see models._SUMMARY_FLOOR).
 # The app can't make a 3B better at it, but it can stop presenting its answer
-# with the same confidence as a 14B's — so the interfaces print this once
+# with the same confidence as a 14B's - so the interfaces print this once
 # alongside the first web answer of a session, and the sources stay visible
 # underneath either way.
 #
 # Only for a model we chose. A name the user supplied, or a server they pointed
 # us at, could be anything at all, and warning about a 70B someone is running
 # on their own hardware would be both wrong and patronising.
-_MODEL_IS_OURS = MANAGED_SERVER and MODEL == _MODEL.id
-
-SUMMARY_CAVEAT = (
-    None
-    if not _MODEL_IS_OURS or models.summarizes_reliably(_MODEL)
-    else (
-        # The label's first half is the size ("3B — light"); the qualifier
-        # after it is for the settings screen's list, not for a sentence.
-        f"The {MODEL_LABEL.split(' — ')[0]} model this computer runs is a small one, so its "
-        f"reading of these results can be hit-or-miss — the sources are the part to trust."
+def _summary_caveat(model):
+    """The warning to print beside this model's reading of web results, or
+    None. A function rather than a constant because set_model changes the
+    answer: switching down to a 3B is exactly when it starts applying."""
+    if not (MANAGED_SERVER and MODEL == model.id) or models.summarizes_reliably(model):
+        return None
+    # The label's first half is the size ("3B - light"); the qualifier after
+    # it is for the settings screen's list, not for a sentence.
+    return (
+        f"The {model.label.split(' - ')[0]} model this computer runs is a small one, so its "
+        f"reading of these results can be hit-or-miss - the sources are the part to trust."
     )
-)
+
+
+SUMMARY_CAVEAT = _summary_caveat(_MODEL)
+
+
+def current_model():
+    """The Model this app is running, or None when the user named one of their
+    own through AI_SHELL_MODEL and it isn't on our list."""
+    return models.by_id(MODEL)
+
+
+def set_model(model_id):
+    """Switch to `model_id`, persisting it. False if the id isn't one we know.
+
+    Every value derived from the model is recomputed here rather than left to
+    a restart, because the interfaces switch models in a running process. The
+    weights are not fetched here - that is ai_shell.server's job, on the next
+    ensure_running, which reports progress the user can watch.
+    """
+    global _MODEL, MODEL, MODEL_REF, MODEL_LABEL, GPU_LAYERS
+    global MODEL_OVERSIZED, SUMMARY_CAVEAT
+
+    model = models.by_id(model_id)
+    if not model:
+        return False
+
+    _MODEL = model
+    MODEL = model.id
+    MODEL_REF = model.ref
+    MODEL_LABEL = model.label
+    GPU_LAYERS = -1 if _VRAM and fit.usable_vram_gb(_VRAM, _SHARED) >= model.footprint_gb else 0
+    MODEL_OVERSIZED = _oversized(model, _SETTINGS)
+    SUMMARY_CAVEAT = _summary_caveat(model)
+
+    _SETTINGS["model"] = model.id
+    _write_settings(_SETTINGS)
+    return True
+
+
+def remember_weights(model_id, path):
+    """Record where a model's weights ended up, so the picker can say which
+    models are already downloaded without asking HuggingFace. Resolving a
+    reference is a network call, and a settings screen has to render on a
+    train."""
+    weights = _SETTINGS.setdefault("weights", {})
+    if weights.get(model_id) == path:
+        return
+    weights[model_id] = path
+    _write_settings(_SETTINGS)
+
+
+def installed_models():
+    """Ids whose weights are on this disk right now.
+
+    Two sources, in order of how much they can be trusted. What a finished
+    download recorded is exact, and it is still checked rather than believed:
+    weights are large, and that folder is the first place somebody goes when a
+    drive fills up. Failing that, the folder is read and file names are matched
+    against each model's reference - which is how weights fetched by a build
+    that kept no record are found, rather than being reported as a download the
+    user has already done.
+
+    Imported here rather than at the top: ai_shell.weights imports this module,
+    and asking for it at import time would close the circle.
+    """
+    from ai_shell import weights
+
+    recorded = _SETTINGS.get("weights") or {}
+    found = set()
+    for model in models.MODELS:
+        path = recorded.get(model.id)
+        if (path and os.path.exists(path)) or weights.present(model.ref):
+            found.add(model.id)
+    return found
+
+
+def set_opacity(percent):
+    """Record how see-through the window should be, and return the value that
+    was actually stored - which is the clamped one, so that the window and the
+    settings file can't end up disagreeing."""
+    global OPACITY
+
+    OPACITY = _clamp_opacity(percent)
+    _SETTINGS["opacity"] = OPACITY
+    _write_settings(_SETTINGS)
+    return OPACITY
 
 
 def remember_runtime(tag):
@@ -231,7 +382,7 @@ def remember_update_check(when):
 
 
 def connection_error():
-    """What to tell the user when the model can't be reached — one message,
+    """What to tell the user when the model can't be reached - one message,
     shared, because the CLI and the GUI were drifting apart on it.
 
     Which advice is useful depends on whose server it is. When we start it,
@@ -240,7 +391,7 @@ def connection_error():
     answering."""
     if MANAGED_SERVER and SERVER_BINARY_EXPLICIT:
         # Their binary, so the useful question is whether the one they named
-        # actually works — nothing was installed on their behalf to blame.
+        # actually works - nothing was installed on their behalf to blame.
         return (
             f"Couldn't reach the local model server on port {PORT}.\n"
             f"Check that '{SERVER_BINARY}' runs, or unset AI_SHELL_SERVER to "

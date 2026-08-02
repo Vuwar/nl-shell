@@ -11,7 +11,7 @@ import os
 import re
 import subprocess
 
-# Matches nothing — the default for a pattern a platform hasn't got one for.
+# Matches nothing - the default for a pattern a platform hasn't got one for.
 _NEVER = re.compile(r"(?!)")
 
 
@@ -25,6 +25,28 @@ class Platform:
     EXAMPLES = ""       # worked examples, in this OS's shell and path style
     LAUNCH_NOTE = ""    # how the model should launch an application
 
+    # The OS's own tools, as {what a user calls it: (proper name, target)}.
+    # Read by ai_shell.rules.apps, which answers these without the model at
+    # all: they aren't listed under these names in APP_SOURCE, so a wrong
+    # guess can't be rescued by the app-launch fallback, and the right answer
+    # is a fixed string rather than anything to reason about. Empty is a fine
+    # answer for a platform with no settled names for them.
+    SYSTEM_APPS = {}
+
+    # Switches this shell can't actually flip, as {what the user calls it:
+    # (proper name, the settings page it lives on)}. Read by
+    # ai_shell.rules.toggles.
+    #
+    # "Turn off bluetooth" has no honest command behind it: the radio is not
+    # a service, disabling the device needs administrator rights, and the
+    # real switch is a WinRT call rather than anything a shell can run. Asked
+    # for one anyway, the model invented "Bluetooth Adapter 1" and "Bluetooth
+    # Adapter 2" and then wrote a Set-Service that changed a startup type and
+    # toggled nothing. Opening the page with the switch on it is one click
+    # from what the user asked for, always works, and needs no rights - and
+    # the explanation says plainly that it isn't the flip itself.
+    SETTINGS_TOGGLES = {}
+
     # Whether to prefer the backslash-repaired reading of the model's JSON.
     # Worth it only where paths are full of backslashes the model won't
     # escape; elsewhere it risks mangling an escape it did mean. See
@@ -35,18 +57,18 @@ class Platform:
     # one is never expanded to a full path (see listing.resolve_listed_paths).
     NAME_PARAM = _NEVER
 
-    # A quoted absolute path inside a command — how the session works out
+    # A quoted absolute path inside a command - how the session works out
     # which folder it is now "in" (see session._remember_context).
     ABS_PATH = _NEVER
 
     # --- running commands -------------------------------------------------
-    # Extra keyword arguments for every process this app starts — the shell
+    # Extra keyword arguments for every process this app starts - the shell
     # running a command, the app scan, the hardware probe, the model server.
     # Nothing to say on a Unix, where a child process is just a child
     # process; on Windows it is what keeps a console window off the user's
     # desktop (see windows.Platform.SPAWN_KWARGS). It lives here, on the
     # platform, because the alternative is remembering it at each call site
-    # one at a time — which is how the app scan came to open a PowerShell
+    # one at a time - which is how the app scan came to open a PowerShell
     # window in front of the panel while the background server, written with
     # the flag, had none.
     SPAWN_KWARGS = {}
@@ -62,6 +84,31 @@ class Platform:
     def open_command(self, path):
         """A command that opens `path` in whatever app the OS uses for it."""
         raise NotImplementedError
+
+    def project_table(self, command):
+        """`command` re-written to emit a table nothing truncates, or None.
+
+        None means "don't", and it is the answer for anything whose verb
+        isn't known to be read-only: the projected command is run a second
+        time, so a command that changes something would change it twice.
+        Platforms without a projection return None for everything, and their
+        output is shown as the text it came back as.
+        """
+        return None
+
+    def parse_table(self, output):
+        """A projected table as {"columns": [...], "rows": [[...]]}, or None
+        when `output` isn't one after all."""
+        return None
+
+    def system_app_command(self, target):
+        """A command that opens one of SYSTEM_APPS' targets.
+
+        The same thing as opening a file on Windows, where the targets are
+        executables and settings URIs and Start-Process takes all of them.
+        Platforms whose system tools are launched differently override this.
+        """
+        return self.open_command(target)
 
     def strip_error_prefix(self, line):
         """A line of error output with the shell's own noise removed, used
@@ -93,7 +140,7 @@ class Platform:
         open file `log`. Returns (process, keepalive).
 
         The child must not outlive us. ai_shell.server stops it on the way
-        out, but that only covers the exits we get to run code for — a crash,
+        out, but that only covers the exits we get to run code for - a crash,
         a kill from the task manager, or a hard power-cycle of the debugger
         all skip it, and what's left behind is a model server holding several
         gigabytes with no window to close it from. Every OS has its own way of
@@ -111,7 +158,7 @@ class Platform:
 
     # --- directory listings ----------------------------------------------
     def list_directory_command(self, path):
-        """A command listing the contents of `path` — the interfaces' own
+        """A command listing the contents of `path` - the interfaces' own
         folder navigation, where the user clicked a real folder."""
         raise NotImplementedError
 
@@ -130,7 +177,7 @@ class Platform:
         return None
 
     def listing_kind(self, command):
-        """What the listing was narrowed to — "folder", "file" or "item" — so
+        """What the listing was narrowed to - "folder", "file" or "item" - so
         a result can name it ("3 folders", or "No folders there", which is the
         readable answer to "is there any folder on the desktop?")."""
         return "item"
@@ -142,7 +189,7 @@ class Platform:
         return []
 
     def prepare_command(self, command, apps):
-        """(command_to_run, problem) — a last chance to fix `command` before
+        """(command_to_run, problem) - a last chance to fix `command` before
         it runs. `problem` is a plain sentence when it can't work at all, and
         nothing is run."""
         return command, None
@@ -164,7 +211,7 @@ class Platform:
 
     def total_ram_gb(self):
         """Physical RAM in GB, or None when it can't be read. None is a real
-        answer here — every caller treats "unknown" as "don't get clever" and
+        answer here - every caller treats "unknown" as "don't get clever" and
         falls back to a model known to run on an ordinary laptop."""
         return None
 
@@ -184,7 +231,7 @@ class Platform:
             result = subprocess.run(
                 ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
                 capture_output=True, timeout=10, **self.SPAWN_KWARGS,
-                # Numbers, so the encoding hardly matters — but text=True
+                # Numbers, so the encoding hardly matters - but text=True
                 # decodes strictly under the locale, and a probe that decides
                 # how much of the model goes on the GPU should not be able to
                 # fail over a byte in a driver's product name.
@@ -194,6 +241,45 @@ class Platform:
             return None
         sizes = [int(line.strip()) for line in result.stdout.splitlines() if line.strip().isdigit()]
         return max(sizes) / 1024 if sizes else None
+
+    def free_vram_gb(self):
+        """Graphics memory not currently in use, in GB, or None.
+
+        Both columns are asked for, not just the free one, because vram_gb
+        reports the largest single card and this has to be that same card's
+        free memory - the first row and the sum are both the wrong answer on a
+        machine with two GPUs.
+
+        None on AMD, on Intel, on anything without nvidia-smi, and on a probe
+        that times out. It is a reading of a moment, so nothing caches it: the
+        whole point is that a game started after launch changes the answer.
+        """
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.total,memory.free",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, timeout=10, **self.SPAWN_KWARGS,
+                encoding="utf-8", errors="replace",
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+        cards = []
+        for line in result.stdout.splitlines():
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) == 2 and all(part.isdigit() for part in parts):
+                cards.append((int(parts[0]), int(parts[1])))
+        if not cards:
+            return None
+        return max(cards)[1] / 1024
+
+    def vram_is_shared(self):
+        """Whether vram_gb is a slice of main memory rather than a card's own.
+
+        False everywhere with a discrete GPU. Apple Silicon overrides it - see
+        macos.vram_gb, which returns a fraction of RAM that macOS has already
+        reserved out, and must not be reserved out of again."""
+        return False
 
     # --- shared helpers ----------------------------------------------------
     def context_paths(self, command):
@@ -217,7 +303,7 @@ class Platform:
         }
 
     def split_pipeline(self, command):
-        """Splits on top-level `|` only — a pipe inside quotes or a nested
+        """Splits on top-level `|` only - a pipe inside quotes or a nested
         block belongs to the stage, not between stages."""
         stages, buf, quote, depth = [], [], None, 0
         for ch in command:
@@ -246,7 +332,7 @@ class Platform:
         The model can only guess where an app lives, and guesses go stale. The
         OS's own list of installed applications finds the real launch target
         regardless. Matching is against the app name the command tried to
-        start — never the user's whole sentence — so this can only relocate
+        start - never the user's whole sentence - so this can only relocate
         that same app, not swap in a different one."""
         target = re.sub(r"[^a-z0-9]", "", re.sub(r"\.(exe|app)$", "", app_name.lower()))
         if not target:

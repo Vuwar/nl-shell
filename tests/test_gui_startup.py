@@ -1,4 +1,4 @@
-"""ai_shell_gui.Api — starting the model server, and starting it again.
+"""ai_shell_gui.Api - starting the model server, and starting it again.
 
 The window opens before the server is up, so every failure here happens on a
 thread nobody is waiting on. What matters is that the failure is recoverable
@@ -32,7 +32,7 @@ class Startup(unittest.TestCase):
         """
         calls = []
 
-        def ensure_running(on_status=None):
+        def ensure_running(on_status=None, on_progress=None):
             outcome = outcomes[min(len(calls), len(outcomes) - 1)]
             calls.append(outcome)
             if gate is not None and len(calls) > 1:
@@ -67,7 +67,7 @@ class Startup(unittest.TestCase):
     def test_a_retry_landing_between_the_wait_and_the_read_is_not_missed(self):
         """The interleaving _wait_for_startup loops for.
 
-        submit() waits on _settled and then reads the status — two steps. A
+        submit() waits on _settled and then reads the status - two steps. A
         retry between them clears the event and sets the state back to
         "starting", so a single wait would find no failure, conclude all was
         well, and translate against a server that isn't up. Forced here by
@@ -99,7 +99,7 @@ class Startup(unittest.TestCase):
             waiter = threading.Thread(target=lambda: answers.append(api.submit("hi")))
             waiter.start()
             # The retry is still inside ensure_running, so submit must not
-            # have answered — with the stale failure or with anything else.
+            # have answered - with the stale failure or with anything else.
             waiter.join(timeout=0.3)
             self.assertTrue(waiter.is_alive(), "submit answered during a retry")
             gate.set()
@@ -113,8 +113,8 @@ class Startup(unittest.TestCase):
 class FrontEndPort(unittest.TestCase):
     """Which port the built front end is served on.
 
-    pywebview serves it over HTTP, and with private_mode off — which this app
-    needs, because the settings screen keeps its choices in localStorage — it
+    pywebview serves it over HTTP, and with private_mode off - which this app
+    needs, because the settings screen keeps its choices in localStorage - it
     falls back to one fixed port for every application on the machine. Two
     copies of this app then share it, and the second one's window quietly
     renders the first one's front end.
@@ -128,7 +128,7 @@ class FrontEndPort(unittest.TestCase):
     def test_the_window_is_not_left_on_pywebviews_shared_default(self):
         started = {}
         # HTML_PATH is pointed at a file that certainly exists, because main()
-        # refuses to open a window when the front end hasn't been built — and
+        # refuses to open a window when the front end hasn't been built - and
         # the front end is a build product that CI produces *after* running the
         # tests. Nothing here looks at the file; create_window is a mock.
         with mock.patch.object(gui, "HTML_PATH", __file__), \

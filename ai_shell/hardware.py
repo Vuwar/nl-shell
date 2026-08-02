@@ -1,7 +1,7 @@
 """How much model this computer can hold.
 
 A thin composition of the two probes on ai_shell.platforms.current, kept out
-of config.py because the interesting part isn't reading the numbers — it's
+of config.py because the interesting part isn't reading the numbers - it's
 that reading them costs something. The GPU probe shells out to nvidia-smi,
 which is tens of milliseconds on a good day and seconds on a machine with a
 sleeping discrete GPU that has to spin up to answer.
@@ -26,9 +26,16 @@ def probe():
         vram_gb = current.vram_gb()
     except Exception:
         vram_gb = None
+    try:
+        shared = current.vram_is_shared()
+    except Exception:
+        shared = False
     return {
         "ram_gb": round(ram_gb, 1) if ram_gb else None,
         "vram_gb": round(vram_gb, 1) if vram_gb else None,
+        # Recorded rather than re-asked: it describes the machine the recorded
+        # choice was made against, exactly like the two numbers above.
+        "vram_shared": shared,
     }
 
 

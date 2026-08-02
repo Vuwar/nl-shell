@@ -1,4 +1,4 @@
-# Packaging metadata for the pip route — for people who already have Python and
+# Packaging metadata for the pip route - for people who already have Python and
 # would rather type a command than download an installer.
 #
 # The distribution is called nl-shell because ai-shell was already taken on
@@ -10,7 +10,7 @@
 #
 #     pip install https://github.com/Vuwar/nl-shell/releases/latest/download/nl_shell-<version>-py3-none-any.whl
 #
-# Building one from a checkout needs the front end built first — see the
+# Building one from a checkout needs the front end built first - see the
 # note on [tool.setuptools.package-data] below.
 
 [build-system]
@@ -80,8 +80,8 @@ version = { attr = "ai_shell.__version__" }
 include = ["ai_shell*", "ai_shell_cli*", "ai_shell_gui*"]
 
 [tool.setuptools.package-data]
-# The built React app. It is NOT in the repository — it's a build product, and
-# .gitignore keeps it out — so a wheel built without running `npm run build`
+# The built React app. It is NOT in the repository - it's a build product, and
+# .gitignore keeps it out - so a wheel built without running `npm run build`
 # first will install a GUI that can't draw anything. ai_shell_gui.app says so
 # in as many words rather than opening a blank window. The release workflow
 # always builds the front end before the wheel.

@@ -1,4 +1,4 @@
-"""ai_shell.llm — which result a citation names, and whether it earns it."""
+"""ai_shell.llm - which result a citation names, and whether it earns it."""
 
 import unittest
 

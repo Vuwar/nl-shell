@@ -1,15 +1,15 @@
-"""Looking something up on the internet — the one thing the model can't do itself.
+"""Looking something up on the internet - the one thing the model can't do itself.
 
 The model is a local GGUF with no tools and no network: everything it knows is
 frozen in its weights, and it has no way to find out that it doesn't know. Ask
 it for today's news and it either refuses or invents something, and the two are
-indistinguishable from the outside. This module is the missing half — the shell
+indistinguishable from the outside. This module is the missing half - the shell
 does the fetching, and the model is only asked to read what came back.
 
 Two halves to that, and they are not the same job:
 
   * search() finds out WHICH pages might answer the question. That needs an
-    index of the whole web, which is a datacentre, so it's borrowed — one
+    index of the whole web, which is a datacentre, so it's borrowed - one
     request to a search engine buys the link graph, the spam filtering and the
     ranking that decides what comes first.
   * read() finds out what a page actually SAYS. That needs nothing but an HTTP
@@ -24,7 +24,7 @@ Why a search engine's HTML rather than an API: an API key is a thing the user
 would have to go and get, and this app's whole shape is that it works after one
 launch with nothing configured. DuckDuckGo's HTML endpoints need no key and no
 account, which makes them the only option that keeps that promise. The cost is
-that this is scraping, and scraping breaks — so failure here is a normal
+that this is scraping, and scraping breaks - so failure here is a normal
 outcome with a plain-English message, never an exception the interfaces have to
 handle.
 
@@ -41,7 +41,7 @@ import zlib
 from concurrent.futures import ThreadPoolExecutor
 from html.parser import HTMLParser
 
-# Both are the same index with the ornament taken off. lite is tried first —
+# Both are the same index with the ornament taken off. lite is tried first -
 # it's a plain table of results, so there's less markup between us and the
 # text, and it's the one more likely to still parse in a year. html is the
 # fallback for when lite is the one having a bad day.
@@ -51,7 +51,7 @@ _ENDPOINTS = (
 )
 
 # A default urllib User-Agent is refused outright. This is a real browser
-# string because the endpoint is a browser page — anything else is asking to be
+# string because the endpoint is a browser page - anything else is asking to be
 # treated as the bot it technically is.
 _HEADERS = {
     "User-Agent": (
@@ -78,7 +78,7 @@ _TITLE_CLASS = re.compile(r"\b(result__a|result-link)\b")
 _SNIPPET_CLASS = re.compile(r"\b(result__snippet|result-snippet)\b")
 
 # Both pages route clicks through a redirect that carries the real target in
-# uddg=. An unredirected href is left alone — the shape has changed before.
+# uddg=. An unredirected href is left alone - the shape has changed before.
 _REDIRECT = re.compile(r"/l/\?|/l\.js\?")
 
 # The "prove you're not a bot" page, which arrives as a perfectly ordinary
@@ -92,14 +92,14 @@ _WHITESPACE = re.compile(r"\s+")
 
 
 class SearchError(RuntimeError):
-    """The search couldn't be done — offline, blocked, or the page changed."""
+    """The search couldn't be done - offline, blocked, or the page changed."""
 
 
 class _Results(HTMLParser):
     """Pulls (title, url, snippet) out of a DuckDuckGo results page.
 
-    The two pages disagree about tags — lite puts snippets in a <td>, html in
-    an <a> — so this keys off class names and ignores the element they're on.
+    The two pages disagree about tags - lite puts snippets in a <td>, html in
+    an <a> - so this keys off class names and ignores the element they're on.
     Titles and snippets arrive strictly in pairs, in order, which is what lets
     a snippet attach to the result opened just before it without either page
     having to say so.
@@ -134,7 +134,7 @@ class _Results(HTMLParser):
             self._buffer.append(data)
 
     def close(self):
-        """Whatever was still being collected when the page ended counts too —
+        """Whatever was still being collected when the page ended counts too -
         a truncated response shouldn't silently drop its last result."""
         super().close()
         self._flush()
@@ -182,7 +182,7 @@ def _fetch(url, query):
 def search(query, limit=_MAX_RESULTS):
     """Web results for `query` as [{"title", "url", "snippet"}], best first.
 
-    Raises SearchError when the search couldn't be run — nothing reachable, or
+    Raises SearchError when the search couldn't be run - nothing reachable, or
     every endpoint answering with a "prove you're not a bot" page. An endpoint
     that answers with a page this can't read is treated the same as one that
     didn't answer: the next endpoint gets a turn, and only when both are
@@ -224,7 +224,7 @@ def search(query, limit=_MAX_RESULTS):
             "the search didn't go through. It usually clears in a few minutes."
         )
     # Reached the engine and understood nothing it said. Which of the two it
-    # is — a genuinely empty search or a page we can no longer read — isn't
+    # is - a genuinely empty search or a page we can no longer read - isn't
     # knowable from here, and the honest message covers both.
     return []
 
@@ -233,7 +233,7 @@ def search(query, limit=_MAX_RESULTS):
 #
 # Everything below is the half that isn't scraping. Fetching one article
 # because a person just asked a question about it is what a browser does, and
-# it's the traffic a content site exists to serve — so unlike search(), this
+# it's the traffic a content site exists to serve - so unlike search(), this
 # is not an uninvited guest, and it says who it is.
 #
 # It still fails, just differently and much less severely. A page can be
@@ -244,7 +244,7 @@ def search(query, limit=_MAX_RESULTS):
 # needing one search engine to work.
 #
 # Where this grows later, without touching a caller:
-#   * _EXTRACTORS dispatches on content type — a PDF or plain-text reader
+#   * _EXTRACTORS dispatches on content type - a PDF or plain-text reader
 #     plugs in beside the HTML one rather than inside it.
 #   * _extract_html is a heuristic and is meant to be replaced by a better one
 #     (density scoring, or a real readability port). MIN_TEXT below is what
@@ -252,12 +252,12 @@ def search(query, limit=_MAX_RESULTS):
 #     is treated as having failed, so a bad rewrite degrades to the snippet
 #     instead of feeding the model rubbish.
 #   * A JavaScript-rendering backend would slot in as another extractor for
-#     pages that come back empty — at the cost of a browser dependency this
+#     pages that come back empty - at the cost of a browser dependency this
 #     app deliberately doesn't have yet.
 
 # Honest, and different from the browser string search() has to send. That
 # asymmetry is deliberate: the search endpoint refuses anything that doesn't
-# look like a browser, so passing as one is the price of using it at all —
+# look like a browser, so passing as one is the price of using it at all -
 # while a site being read has no such gate, and there's no reason not to say
 # what we are and let it decide.
 _READER_HEADERS = {
@@ -266,7 +266,7 @@ _READER_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
     # Asked for because an article is mostly repeated markup and compresses to
     # a fraction of itself, and this is time a person spends watching a
-    # prompt. Servers send it unasked anyway — python.org does — so the
+    # prompt. Servers send it unasked anyway - python.org does - so the
     # decompression path below is not optional either way.
     "Accept-Encoding": "gzip, deflate",
 }
@@ -281,20 +281,20 @@ _READ_TIMEOUT = 8
 _MAX_PAGE_BYTES = 2_000_000
 
 # Below this much extracted text, treat the read as failed. This is the line
-# that catches the JavaScript shell and the paywall teaser — both of which
+# that catches the JavaScript shell and the paywall teaser - both of which
 # come back as a valid page containing nothing worth reading, and both of
 # which would otherwise be handed to the model as though they were the article.
 #
 # 250 was too low, and the way it failed is worth keeping written down. A
 # JavaScript weather page extracted to 322 characters reading "Now------ Feels
-# Like HHigh LLow Chance of Rain Wind Humidity" — every label the page renders,
+# Like HHigh LLow Chance of Rain Wind Humidity" - every label the page renders,
 # with the numbers left out because a script fills those in later. It cleared
 # 250 comfortably and went to the model as though it were a forecast.
 #
 # Measured rather than guessed, because the obvious tighter tests are wrong:
 # requiring sentences rejects python.org/downloads, which is a table and was
 # the best source we had, and rejecting runs of "---" throws out RFCs, which
-# use them as rules. Extracted length separates the two cleanly on its own —
+# use them as rules. Extracted length separates the two cleanly on its own -
 # the two shells came to 322 and 359 characters, while the smallest page with
 # anything real on it came to 3,594. 1000 sits in that gap with an order of
 # magnitude of room either side.
@@ -337,14 +337,14 @@ _MAX_PAGE_CHARS = 2500
 # How many read pages reach the model. Three at _MAX_PAGE_CHARS is roughly 2k
 # tokens, which is what an 8k window can spare once the question, the prompt
 # and room to answer are taken out. Note this caps what's *sent*, not what's
-# *fetched* — see read_results.
+# *fetched* - see read_results.
 _MAX_READ = 3
 
 # Never fetched: their content is not text, and the cost of finding that out
 # is a download.
 _UNREADABLE = re.compile(r"\.(pdf|zip|gz|tar|exe|dmg|mp[34]|avi|mkv|jpe?g|png|gif|webp|svg|ico)$", re.I)
 
-# Whole subtrees that are never the article — chrome, scripts, and the
+# Whole subtrees that are never the article - chrome, scripts, and the
 # navigation furniture every page wraps its content in.
 _SKIP_TAGS = frozenset({
     "script", "style", "noscript", "svg", "canvas", "template", "iframe",
@@ -363,7 +363,7 @@ _BLOCK_TAGS = frozenset({
 # that marking beats any guess we could make.
 _MAIN_TAGS = frozenset({"article", "main"})
 
-# Tags that never close, so they must not open a subtree either — a <br> or an
+# Tags that never close, so they must not open a subtree either - a <br> or an
 # <img> counted as an opening tag would leave the depth counters stuck.
 _VOID_TAGS = frozenset({
     "br", "img", "input", "hr", "meta", "link", "source", "track", "area",
@@ -372,7 +372,7 @@ _VOID_TAGS = frozenset({
 
 # Addresses that aren't the public web. A search result is a URL chosen by
 # somebody else, and following one to 127.0.0.1 would point this app's fetcher
-# at whatever the user happens to be running locally — including the model
+# at whatever the user happens to be running locally - including the model
 # server. Literal-only: a hostname that resolves to a private address gets
 # past this, which is a real gap and a much less likely one.
 _PRIVATE_HOST = re.compile(
@@ -387,13 +387,13 @@ class _Text(HTMLParser):
     A heuristic, and knowingly so: it drops the subtrees that are never the
     article, prefers whatever the page marked as <article> or <main>, and
     keeps the rest. It does not try to work out which of five <div>s is the
-    story — that's what a real readability implementation does, and it's the
+    story - that's what a real readability implementation does, and it's the
     upgrade this class is shaped to accept later.
 
     Real HTML is also malformed constantly, and an unclosed <nav> would
     otherwise swallow the rest of the document. Depth counters are clamped at
     zero and the whole thing is backstopped by _MIN_TEXT, so the failure mode
-    of every misparse is "returned too little" — which the caller already
+    of every misparse is "returned too little" - which the caller already
     treats as a page that didn't read.
     """
 
@@ -440,7 +440,7 @@ class _Text(HTMLParser):
             self._chunks.append((self._main_depth > 0, data))
 
     def text(self):
-        """The page's readable text — the marked-up article if the page had
+        """The page's readable text - the marked-up article if the page had
         one, otherwise everything that survived the skipping."""
         marked = [chunk for in_main, chunk in self._chunks if in_main]
         chosen = marked if _joined_length(marked) >= _MIN_MAIN else [c for _, c in self._chunks]
@@ -472,7 +472,7 @@ def _decompress(raw, encoding):
     """`raw` as plain bytes, whatever Content-Encoding says it's wrapped in.
 
     Not optional and not only about the header we send: servers compress
-    unbidden, and the symptom is silent — gzip bytes decoded as text produce
+    unbidden, and the symptom is silent - gzip bytes decoded as text produce
     thousands of characters of mojibake, which looks to every length check
     like a page that read perfectly.
 
@@ -535,7 +535,7 @@ _EXTRACTORS = {
 #
 # Unlocked, though read_all writes to it from several threads. Two results on
 # one host can therefore both fetch the same robots.txt before either has
-# stored it — one wasted request, and then whichever finishes last wins with
+# stored it - one wasted request, and then whichever finishes last wins with
 # an answer identical to the one it replaced. A lock would remove a duplicate
 # request at the cost of making every read wait on one host's rules file.
 _robots_cache = {}
@@ -547,7 +547,7 @@ def _robots_rules(root):
     The fetch is done here rather than by RobotFileParser.read(), which is the
     obvious way to write this and is wrong in a way that hides. read() fetches
     with urllib's default User-Agent, and sites that refuse that agent answer
-    403 — whereupon the stdlib records "disallow everything" and returns
+    403 - whereupon the stdlib records "disallow everything" and returns
     normally, with nothing raised for a caller to notice. Wikipedia is one of
     those sites. Left alone, this function's own docstring about failing open
     was false, and the single best source on the web was the one page the
@@ -574,7 +574,7 @@ def _robots_allow(url):
     behaviour you can describe out loud and one you can't.
 
     Fails open, and now genuinely: a robots.txt that can't be fetched, or that
-    the site won't serve us, is the site declining to say — which is not the
+    the site won't serve us, is the site declining to say - which is not the
     same as declining. A file that loads and says no is obeyed.
     """
     parts = urllib.parse.urlparse(url)
@@ -610,7 +610,7 @@ def read(url, max_chars=_MAX_PAGE_CHARS):
 
     None is an ordinary answer, not an error, and it covers every way this
     doesn't work: refused by robots.txt, unreachable, timed out, not a text
-    document, or a page whose HTML contains nothing worth reading — the
+    document, or a page whose HTML contains nothing worth reading - the
     JavaScript shell and the paywall teaser both land here. Every caller is
     expected to have something to fall back on, which is what makes this safe
     to attempt on any URL at all.
@@ -666,7 +666,7 @@ def read_all(urls, max_chars=_MAX_PAGE_CHARS):
 
     Concurrent because this is latency the user is sitting through: read one
     after another and a slow page adds its whole timeout to the wait, while
-    together the cost is the slowest single page. Small pool — this is a
+    together the cost is the slowest single page. Small pool - this is a
     handful of URLs, and it should look like a few browser tabs opening, not
     like a crawl.
     """
@@ -688,7 +688,7 @@ def read_results(results, max_pages=_MAX_READ, max_chars=_MAX_PAGE_CHARS):
 
     Every result is attempted, not just the first few. The reads run together,
     so trying five costs the same wait as trying three, and which three come
-    back isn't knowable in advance — that's the whole reliability argument for
+    back isn't knowable in advance - that's the whole reliability argument for
     reading rather than searching harder. The cap is applied afterwards, to
     what reaches the model: the first `max_pages` that succeeded keep their
     text and everything else keeps its snippet, because the scarce thing is
@@ -696,7 +696,7 @@ def read_results(results, max_pages=_MAX_READ, max_chars=_MAX_PAGE_CHARS):
 
     A result whose page didn't read is not dropped and not marked as broken.
     It carries the snippet it always had, which is exactly the app's previous
-    behaviour — so the worst case of this whole feature is the old one.
+    behaviour - so the worst case of this whole feature is the old one.
     """
     pages = read_all([result["url"] for result in results], max_chars)
     enriched = []
@@ -714,7 +714,7 @@ def as_sources(results):
     and whether the answer was read out of the page or off its snippet.
 
     Page text is deliberately dropped here rather than passed along. The
-    interfaces have no use for it — they show a title and a link — and it's
+    interfaces have no use for it - they show a title and a link - and it's
     thousands of characters per result that would otherwise cross the GUI's
     bridge on every search to be thrown away on the other side.
     """
@@ -733,7 +733,7 @@ def format_sources(sources):
     """The sources as two lines each, for a console.
 
     Numbered to match as_context, so the [2] in the model's answer is the [2]
-    the user can read for themselves — which is the whole reason the sources
+    the user can read for themselves - which is the whole reason the sources
     are printed at all rather than being an appendix nobody looks at.
 
     The read ones say so. It's a small mark for a real distinction: an answer
@@ -758,7 +758,7 @@ def as_context(results):
     An entry is the page's text when it could be read and the search snippet
     when it couldn't, and it isn't labelled as either. The model's job is to
     answer from what's in front of it, and telling it that [1] is a full
-    article while [3] is a fragment invites it to rank the sources — which is
+    article while [3] is a fragment invites it to rank the sources - which is
     a judgement a 3B model makes badly, and one the numbering already lets the
     user make for themselves.
     """
