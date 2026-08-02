@@ -27,10 +27,14 @@
   inset: 0;
   transform-origin: left;
   transform: scaleX(var(--fill, 0));
+  /* One colour, lifted slightly along its length. The first version ran to
+     38% white, which gave every full brick a pale right end indistinguishable
+     from the edge of a brick still filling: the only hard boundary in a brick
+     should be the fill line itself. */
   background: linear-gradient(
     90deg,
-    rgba(139, 123, 255, 0.55),
-    rgba(255, 255, 255, 0.38)
+    rgba(139, 123, 255, 0.62),
+    rgba(168, 157, 255, 0.72)
   );
   transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -56,12 +60,15 @@
   animation-delay: var(--delay);
 }
 
-/* 0.92 to 1.0 was the first attempt and it was invisible: an eight percent
-   swing on a translucent fill, at four seconds, is not something anyone sees.
-   Wide enough to notice, slow enough not to flicker. */
+/* Brightness, not opacity. Opacity was the obvious choice and the wrong one:
+   the bricks are staggered by design, so at any instant some sit at the dim
+   end of the cycle - and a translucent fill at 62% over a dark panel does not
+   read as a lit brick resting, it reads as a brick that never filled. Which
+   is precisely what it looked like. Brightness leaves the fill at full
+   coverage and only changes how warm it is. */
 @keyframes brickBreathe {
-  0%, 100% { opacity: 0.62; }
-  50% { opacity: 1; }
+  0%, 100% { filter: brightness(0.88); }
+  50% { filter: brightness(1.18); }
 }
 
 /* Verifying is the sha256 pass: one sweep across everything, and the bricks
