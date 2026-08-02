@@ -235,7 +235,12 @@ def ensure_running(on_status=None, on_progress=None):
             progress({
                 "phase": "loading",
                 "label": config.MODEL_LABEL,
-                "gpu_layers": gpu_layers,
+                # A count, not llama.cpp's argument. -1 there means "all of
+                # them" (see fit.gpu_layers), which an interface cannot draw
+                # and certainly cannot say: it read as "-1 of 28 layers".
+                "gpu_layers": (
+                    model.layers if gpu_layers < 0 and model else max(0, gpu_layers)
+                ),
             })
 
         try:

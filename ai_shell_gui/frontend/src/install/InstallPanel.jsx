@@ -14,6 +14,10 @@ function caption(install) {
       + `(attempt ${install.retry.attempt} of ${install.retry.of})`;
   }
   if (install.phase === "loading" && install.gpuLayers !== null) {
+    if (install.gpuLayers === 0) return "Loading the model, to run on the processor";
+    if (install.gpuLayers >= install.layers) {
+      return `All ${install.layers} layers on your graphics card`;
+    }
     return `${install.gpuLayers} of ${install.layers} layers on your graphics card`;
   }
   if (install.phase === "loading") return "Loading the model";

@@ -56,8 +56,11 @@
   animation-delay: var(--delay);
 }
 
+/* 0.92 to 1.0 was the first attempt and it was invisible: an eight percent
+   swing on a translucent fill, at four seconds, is not something anyone sees.
+   Wide enough to notice, slow enough not to flicker. */
 @keyframes brickBreathe {
-  0%, 100% { opacity: 0.92; }
+  0%, 100% { opacity: 0.62; }
   50% { opacity: 1; }
 }
 

@@ -129,6 +129,25 @@ class ProgressDecoration(unittest.TestCase):
         self.assertEqual(loading[0]["gpu_layers"], 19)
         self.assertEqual(loading[0]["layers"], 28)
 
+    def test_all_on_the_card_is_reported_as_a_count(self):
+        # -1 is llama.cpp's argument for "all of them", not a number of
+        # layers. Passed through, it said "-1 of 28 layers on your graphics
+        # card" and left every brick cool, because no index is below -1.
+        seen = []
+        sent = lambda emit: emit({"phase": "downloading", "label": "Test", "percent": 5})
+        with self._stubbed(weights_ensure=sent, gpu_layers=-1):
+            server.ensure_running(on_progress=seen.append)
+        loading = [p for p in seen if p["phase"] == "loading"][0]
+        self.assertEqual(loading["gpu_layers"], 28)
+
+    def test_none_on_the_card_is_reported_as_zero(self):
+        seen = []
+        sent = lambda emit: emit({"phase": "downloading", "label": "Test", "percent": 5})
+        with self._stubbed(weights_ensure=sent, gpu_layers=0):
+            server.ensure_running(on_progress=seen.append)
+        loading = [p for p in seen if p["phase"] == "loading"][0]
+        self.assertEqual(loading["gpu_layers"], 0)
+
     def test_a_start_with_nothing_to_download_says_nothing(self):
         # Loading is the end of an install, not an event of its own. Emitting
         # it on every start puts a progress ring around the folded tile of an
