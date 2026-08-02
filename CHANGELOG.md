@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/Vuwar/nl-shell/compare/v0.2.0...v0.3.0) (2026-08-02)
+
+
+### Features
+
+* fit the model to the card, show the download arriving, and answer what has an exact answer ([#5](https://github.com/Vuwar/nl-shell/issues/5)) ([f6aa40f](https://github.com/Vuwar/nl-shell/commit/f6aa40f45126ef9a47e45e6f95dab9088bd68325))
+
 ## [0.2.0](https://github.com/Vuwar/nl-shell/compare/v0.1.0...v0.2.0) (2026-08-01)
 
 
