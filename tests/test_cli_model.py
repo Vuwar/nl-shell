@@ -47,7 +47,15 @@ class ModelCommand(unittest.TestCase):
 
     def test_a_number_switches(self):
         out = io.StringIO()
+        # MODEL is patched for the same reason HARDWARE is: unpatched it's
+        # whatever this machine resolved to at import, and on a machine that
+        # already resolved to choice 2 the command correctly declines to
+        # switch to what is already running - so the test fails on that
+        # machine and nowhere else. It did, on macOS arm64, where unified
+        # memory puts the default somewhere different from every other
+        # runner.
         with mock.patch.object(config, "HARDWARE", MACHINE), \
+             mock.patch.object(config, "MODEL", "qwen2.5-coder-7b-q6"), \
              mock.patch.object(config, "installed_models", return_value=set()), \
              mock.patch.object(server, "switch_model", return_value={"ok": True}) as switched, \
              redirect_stdout(out):
@@ -67,7 +75,9 @@ class ModelCommand(unittest.TestCase):
 
     def test_a_failed_switch_prints_why(self):
         out = io.StringIO()
+        # MODEL patched for the reason given in test_a_number_switches.
         with mock.patch.object(config, "HARDWARE", MACHINE), \
+             mock.patch.object(config, "MODEL", "qwen2.5-coder-7b-q6"), \
              mock.patch.object(config, "installed_models", return_value=set()), \
              mock.patch.object(server, "switch_model",
                                return_value={"ok": False, "reason": "The download stopped."}), \

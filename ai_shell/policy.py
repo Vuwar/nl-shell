@@ -220,6 +220,14 @@ _MAX_DEPTH = 3
 # a target starting with & is another descriptor (2>&1), not a file.
 _REDIRECT = re.compile(r"(?<![>&])>{1,2}(?!>)\s*(&?[^\s|;&<>]+|\"[^\"]*\"|'[^']*')")
 
+# Redirect targets that are somewhere to throw output, not somewhere to keep
+# it. Writing to one destroys nothing, so the overwrite rule has nothing to
+# warn about - see _redirect_reason.
+_NULL_DEVICES = frozenset((
+    "/dev/null", "/dev/zero", "/dev/stdout", "/dev/stderr", "/dev/tty",
+    "nul", "nul:", "$null",
+))
+
 
 def escalate(command, exists=os.path.exists, depth=0):
     """Why `command` should be confirmed even if the model called it safe, as
@@ -363,6 +371,14 @@ def _redirect_reason(command, quoted, exists):
         target = _unquote(match.group(1))
         # 2>&1 and friends point at another stream, not at a file.
         if target.startswith("&"):
+            continue
+        # Throwing output away isn't overwriting anything, whatever
+        # os.path.exists says about /dev/null. Not a corner case: this app's
+        # own Linux launch is `nohup <program> >/dev/null 2>&1 &`, and the
+        # prompt tells the model to write it that way, so without this every
+        # application launch on Linux asked the user to confirm that it
+        # "overwrites an existing file".
+        if target.lower() in _NULL_DEVICES:
             continue
         if exists(target):
             return "overwrites an existing file"

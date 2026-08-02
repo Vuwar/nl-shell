@@ -405,6 +405,45 @@ class LaunchingIsNotChanging(unittest.TestCase):
         self.assertIn("erases", self._reason("diskpart"))
 
 
+class ThrowingOutputAway(unittest.TestCase):
+    """Redirecting to the null device overwrites nothing.
+
+    `/dev/null` is a file as far as os.path.exists is concerned, so the
+    overwrite rule counted `>/dev/null` as clobbering something. That is not
+    a corner case here: this app's own Linux launch command is
+    `nohup <program> >/dev/null 2>&1 &`, and LAUNCH_NOTE tells the model to
+    write it that way - so every application launch on Linux was being
+    escalated to a confirmation that read "it overwrites an existing file".
+    """
+
+    def _reason(self, command):
+        return policy.escalate(command, exists=_everything_exists)
+
+    def test_the_linux_launch_this_app_writes_itself(self):
+        self.assertIsNone(self._reason("nohup firefox >/dev/null 2>&1 &"))
+
+    def test_the_one_the_rules_produce_for_a_website(self):
+        self.assertIsNone(self._reason(
+            "nohup xdg-open 'https://www.youtube.com/results?search_query=eminem' "
+            ">/dev/null 2>&1 &"))
+
+    def test_the_windows_spelling(self):
+        self.assertIsNone(self._reason("Get-Date > NUL"))
+        self.assertIsNone(self._reason("Get-Date > nul"))
+
+    def test_the_other_devices(self):
+        for target in ("/dev/zero", "/dev/stdout", "/dev/stderr", "/dev/tty"):
+            with self.subTest(target):
+                self.assertIsNone(self._reason(f"echo hi > {target}"))
+
+    def test_a_real_file_is_still_caught(self):
+        self.assertIn("overwrites", self._reason("echo hi > notes.txt"))
+
+    def test_a_file_that_merely_looks_like_one(self):
+        # Not the device - a file the user actually has.
+        self.assertIn("overwrites", self._reason("echo hi > dev/null.txt"))
+
+
 class WhatTheConfirmationSays(unittest.TestCase):
     """The console REPL's prompt. A confirmation that says why it appeared is
     read; one that warns in general terms is answered without looking."""

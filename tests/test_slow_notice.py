@@ -108,8 +108,16 @@ class Rate(unittest.TestCase):
         self.assertIsNone(rate)
 
     def test_a_long_reply_is_timed(self):
+        # The clock is driven rather than read. A stubbed call returns in
+        # microseconds, and time.monotonic on Windows before Python 3.13 ticks
+        # every 15.6ms - so both reads land in the same tick, the elapsed time
+        # is exactly 0, and _rate correctly refuses to divide by it. The test
+        # then fails on that runner and nowhere else, which is what happened.
+        # Two fixed readings a second apart test the arithmetic instead of the
+        # host's clock.
         client = StubClient(REPLY)
         client.usage_tokens = 63
-        _, rate = llm.ask_model(client, "hey", [])
+        with mock.patch.object(llm.time, "monotonic", side_effect=[0.0, 1.0]):
+            _, rate = llm.ask_model(client, "hey", [])
         self.assertIsNotNone(rate)
-        self.assertGreater(rate, 0)
+        self.assertEqual(rate, 63)
