@@ -43,7 +43,13 @@ export default function LayerGrid({ layers, filled, phase, gpuLayers, animate = 
         className={classes.join(" ")}
         style={{
           "--fill": fill,
-          "--delay": `${step * 260}ms`,
+          // Negative, and this is the whole trick. A positive delay would
+          // only offset a brick from its own start, and a brick starts when
+          // it fills - so one that lands a minute in runs a minute out of
+          // phase with the rest. Negative starts every brick partway into a
+          // cycle they all began together at mount, which is how the lights
+          // on a keyboard stay in step: one clock, a phase per position.
+          "--delay": `-${step * 260}ms`,
           // The handoff to the card gets its own, much tighter stagger. It
           // has to finish inside the seconds a model takes to load, where the
           // breath has a four second cycle to play with.

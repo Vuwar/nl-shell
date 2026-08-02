@@ -55,8 +55,14 @@
 
 /* Waiting, not stalled. The breath enters at the top-left and travels to the
    bottom-right, one brick behind the last, so the block moves as a single
-   thing rather than as thirty independent lights. */
-.layer-grid.downloading .brick.full::after {
+   thing rather than as thirty independent lights.
+
+   Every brick, not only the filled ones. An animation applied on filling
+   starts when the brick fills, so a brick that lands a minute in is a minute
+   out of phase with its neighbours - the block never breathes together. Empty
+   bricks run it too, invisibly, because their fill is scaled to nothing; by
+   the time one has something to show it is already in step with the rest. */
+.layer-grid.downloading .brick::after {
   animation: brickBreathe 4s ease-in-out infinite;
   animation-delay: var(--delay);
 }
