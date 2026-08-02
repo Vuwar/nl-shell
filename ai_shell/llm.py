@@ -12,7 +12,7 @@ import time
 
 from openai import APIStatusError
 
-from ai_shell import config, fit
+from ai_shell import config, fit, idle
 from ai_shell.platforms import current
 
 _RULES = f"""You are a command translator for a {current.OS_NAME} AI shell.
@@ -231,21 +231,26 @@ def _complete(client, messages, max_tokens, schema=None, schema_name="response")
         "temperature": 0,
         "messages": messages,
     }
-    if not (schema and _schema_supported):
-        return client.chat.completions.create(**request)
+    # Every model call in this app comes through here, which is what makes one
+    # wrap enough: it is where the server is noticed to be in use, and where a
+    # server the idle watchdog stopped is started again before the request goes
+    # out. See ai_shell.idle.
+    with idle.active():
+        if not (schema and _schema_supported):
+            return client.chat.completions.create(**request)
 
-    try:
-        return client.chat.completions.create(
-            **request,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {"name": schema_name, "strict": True, "schema": schema},
-            },
-        )
-    except APIStatusError:
-        response = client.chat.completions.create(**request)
-        _schema_supported = False  # only after the plain call proves that was the problem
-        return response
+        try:
+            return client.chat.completions.create(
+                **request,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": schema_name, "strict": True, "schema": schema},
+                },
+            )
+        except APIStatusError:
+            response = client.chat.completions.create(**request)
+            _schema_supported = False  # only after the plain call proves that was the problem
+            return response
 
 
 PICK_APPS_PROMPT = f"""You helped a {current.OS_NAME} AI shell ask the user a clarifying question

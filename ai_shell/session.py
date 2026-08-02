@@ -210,10 +210,29 @@ class Session:
         # reporting a speed for a table lookup would put the graphics-card
         # notice in front of a user whose request never touched the card.
         answered = rules.resolve(user_input, rules.Machine(self._scan_apps))
-        data, rate = (
-            (answered.as_data(), None) if answered
-            else ask_model(self.client, user_input, self.history)
-        )
+        try:
+            data, rate = (
+                (answered.as_data(), None) if answered
+                else ask_model(self.client, user_input, self.history)
+            )
+        except server.ServerError as error:
+            # The model server had to be started for this turn and wouldn't
+            # start. Reported rather than raised: waking is an ordinary part of
+            # a turn now (see ai_shell.idle), and both interfaces already draw
+            # a sentence with no command in it. Nothing is left pending,
+            # because nothing was translated.
+            self._pending = None
+            return {
+                "command": None,
+                "search": None,
+                "risk": None,
+                "risk_reason": None,
+                "explanation": str(error),
+                "does": [],
+                "options": None,
+                "notice": None,
+                "error": True,
+            }
 
         command = data.get("command")
         # One job per turn. The prompt says so, but a model that fills in two
