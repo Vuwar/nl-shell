@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
+import "./install/install.css";
+import InstallPanel from "./install/InstallPanel";
+import InstallRow from "./install/InstallRow";
+import TileRing from "./install/TileRing";
+import { formatBytes } from "./install/format";
+import { DEMO, useDemoProgress, useInstallProgress } from "./install/useInstallProgress";
 
 let nextId = 1;
 const uid = () => nextId++;
@@ -265,7 +271,7 @@ const HINT_FADE = 320; // must match .input-hint's transition in App.css
 // Returns advance() so a send can turn the page too: you've just proved you
 // know how to send something, and the next empty box is a fresh chance to
 // show you something you don't know yet.
-function useRotatingHint(paused) {
+export function useRotatingHint(paused) {
   const bag = useRef([]);
   const fade = useRef(null);
 
@@ -859,6 +865,9 @@ export default function App() {
   const [status, setStatus] = useState("idle"); // idle | thinking | ok | error
   // What the model server is doing while it starts, or null once it's up.
   const [booting, setBooting] = useState(null);
+  // The same start as numbers, when there is a weights download worth
+  // drawing. Null for every other kind of wait, which is most of them.
+  const [startup, setStartup] = useState(null);
   // The version waiting to be installed, once one has finished downloading.
   // Null until then - a check nobody asked for shouldn't be visible while
   // it's happening, only when it has something to offer.
@@ -906,6 +915,32 @@ export default function App() {
   const { hint, shown: hintShown, advance: nextHint } = useRotatingHint(
     view !== "shell" || value !== "" || busy || entries.length > 0 || minimized
   );
+
+  // The weights download, as something to draw. Null unless one is running.
+  const demo = useDemoProgress();
+  const install = useInstallProgress(DEMO ? demo : startup);
+
+  // The install screen outlives its payload by the length of its own exit.
+  // Unmounting the moment the server is ready would cut the grid off at the
+  // frame it finally had something good to say.
+  const [leaving, setLeaving] = useState(false);
+  const wasInstalling = useRef(false);
+  useEffect(() => {
+    if (install) {
+      wasInstalling.current = true;
+      return undefined;
+    }
+    if (!wasInstalling.current) return undefined;
+    wasInstalling.current = false;
+    setLeaving(true);
+    const timer = setTimeout(() => setLeaving(false), 260); // installCollapse
+    return () => clearTimeout(timer);
+  }, [install]);
+
+  // What to render: the live install, or the one being seen out.
+  const lastInstall = useRef(null);
+  if (install) lastInstall.current = install;
+  const shownInstall = install || (leaving ? lastInstall.current : null);
 
   // Settings view: Esc closes it; returning to the shell refocuses the input.
   useEffect(() => {
@@ -1172,15 +1207,21 @@ export default function App() {
         if (watch.stopped) return;
         if (state.state === "starting") {
           setBooting(state.message);
+          setStartup(state);
           await new Promise((r) => setTimeout(r, 400));
           continue;
         }
         setBooting(null);
         if (state.state === "failed") {
           setStatus("error");
+          // Kept rather than cleared: the payload still carries how far the
+          // download got, and the grid freezes there instead of vanishing at
+          // the moment there is something to explain.
+          setStartup(state);
           upsertEntry(STARTUP_ERROR, { kind: "error", text: state.message, retry: true });
           return;
         }
+        setStartup(null);
         // The graphics card has room for the model, or it hasn't. Said here
         // rather than during the wait: it describes how the app will behave
         // from now on, not what it is doing at this second.
@@ -1567,12 +1608,34 @@ export default function App() {
         onMouseMove={handleMouseMove}
       >
         <div className="panel-sheen" />
+        {/* Folded, the tile is all there is to say it with. Nothing is drawn
+            while the panel is open - the grid inside is already saying it. */}
+        {shownInstall && (
+          <TileRing
+            percent={shownInstall.percent}
+            title={
+              `${formatBytes(shownInstall.bytesDone)} of `
+              + `${formatBytes(shownInstall.bytesTotal)}`
+            }
+          />
+        )}
         {/* Kept mounted while collapsed rather than swapped out: everything on
             screen - the conversation, a listing browsed three folders deep, a
             half-typed line - has to be exactly where it was when the tile is
             opened again. It is only moved out of the layout and faded. */}
         <div className="panel-body" ref={bodyRef} aria-hidden={minimized}>
-          {view === "settings" ? (
+          {/* The very first install takes the whole panel: there is no model
+              yet, so there is nothing else the window could usefully be. Any
+              later download is a line above a shell that still works, and is
+              handled further down beside the boot row. */}
+          {shownInstall && shownInstall.firstInstall ? (
+            <InstallPanel
+              install={shownInstall}
+              hint={hint}
+              hintShown={hintShown}
+              leaving={leaving}
+            />
+          ) : view === "settings" ? (
             <div className="settings">
               <div className="settings-head">
                 <span className="settings-title">Settings</span>
@@ -1725,13 +1788,20 @@ export default function App() {
 
           {/* Only while the model server is coming up. Typing is deliberately
               still allowed: the request waits on the Python side and runs the
-              moment the server answers. */}
-          {booting && (
+              moment the server answers.
+
+              Two shapes, because the waits are two sizes. A weights download
+              runs for minutes and gets the strip; everything else a start
+              does - fetching llama.cpp, loading the model, a switch to
+              weights already on disk - keeps the line it has always had. */}
+          {shownInstall && !shownInstall.firstInstall ? (
+            <InstallRow install={shownInstall} />
+          ) : booting ? (
             <div className="boot-row">
               <ThinkingDots />
               <span className="boot-text">{booting}</span>
             </div>
-          )}
+          ) : null}
 
           {/* A new version is already downloaded and waiting. It is never
               applied without this click: the app closes, swaps itself out and
