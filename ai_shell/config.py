@@ -44,6 +44,13 @@ DEFAULT_PORT = 8080
 # budgeted for, so it isn't scaled up on big machines.
 DEFAULT_CONTEXT = 8192
 
+# How long the app may sit unused before it stops the model server and gives
+# the graphics card back. Five minutes is well past any pause in a
+# conversation, and the cost of being wrong is one answer that takes about four
+# seconds longer - the weights come back from the file cache, not the disk.
+# 0 turns it off and keeps the model resident for as long as the app is open.
+DEFAULT_IDLE_UNLOAD_MINUTES = 5.0
+
 # How opaque the desktop window is, as a percentage. 92 is a panel that reads
 # as glass over a wallpaper without anyone having to go looking for the
 # setting. The floor is well below what's comfortable to read on purpose: how
@@ -71,6 +78,25 @@ def _opacity_setting(environ, settings):
     """The opacity to open at - an environment override first, then what the
     settings screen last wrote, then the default."""
     return _clamp_opacity(environ.get("AI_SHELL_OPACITY") or settings.get("opacity"))
+
+
+def _idle_unload_minutes(environ, settings):
+    """Minutes of quiet before the card goes back, or 0.0 for never.
+
+    Read the way the opacity slider is: anything unparseable is the default
+    rather than an error, because this comes out of a JSON file the user can
+    edit and an app that refuses to start over a typo is worse than one that
+    ignores it. `or` won't do here, unlike above - 0 is the off switch, and it
+    would be read as nothing set. A negative is off too, rather than a timeout
+    that expired before the app opened.
+    """
+    raw = environ.get("AI_SHELL_IDLE_UNLOAD")
+    if raw is None:
+        raw = settings.get("idle_unload_minutes")
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return DEFAULT_IDLE_UNLOAD_MINUTES
 
 
 def _read_settings():
@@ -247,6 +273,11 @@ BASE_URL = _ENV_BASE_URL or f"http://{HOST}:{PORT}/v1"
 # install, a shared box, a llama-server with hand-picked flags - and spawning
 # a second server to ignore would be both wasteful and confusing.
 MANAGED_SERVER = _ENV_BASE_URL is None
+
+# How long the app sits idle before the server is stopped and the graphics card
+# handed back. Only meaningful when the server is ours to stop: a llama-server
+# somebody else started stays up for as long as they want it up.
+IDLE_UNLOAD_MINUTES = _idle_unload_minutes(os.environ, _SETTINGS)
 
 # api_key has to be *something* for the OpenAI client to send a request, and
 # nothing local checks it.

@@ -35,6 +35,7 @@ import urllib.request
 
 from ai_shell import config
 from ai_shell import fit
+from ai_shell import idle
 from ai_shell import models
 from ai_shell import runtime
 from ai_shell import weights
@@ -55,6 +56,12 @@ LOG_PATH = os.path.join(config.CONFIG_DIR, "llama-server.log")
 # hang, not a download. It was thirty minutes when the first run's
 # multi-gigabyte fetch happened inside this wait.
 READY_TIMEOUT = 300
+
+# How much of the card another program has to take before we get out of its
+# way. Below a gigabyte is a browser opening tabs, not something that needs the
+# card. How long the app must have been quiet first is idle.PRESSURE_GRACE:
+# that is a timing rule, not a fact about graphics memory.
+PRESSURE_GB = 1.0
 
 _process = None
 _keepalive = None  # whatever ties the child's life to ours; must stay referenced
@@ -261,11 +268,35 @@ def ensure_running(on_status=None, on_progress=None):
         except OSError as error:
             raise _fail(f"Couldn't start '{config.SERVER_BINARY}': {error}") from None
 
-        atexit.register(stop)
-
     say(f"Starting {config.MODEL_LABEL} ({config.MODEL_REF})...")
     _wait_until_ready()
+
+    # After the lock above has been released, never inside it. stop() reaches
+    # for _lock from the watchdog's thread while it is holding idle's, so
+    # taking them in the other order here is how the two threads would meet in
+    # the middle and stay there. idle's lock is always the outer one.
+    #
+    # After _wait_until_ready too, because that is what records what the card
+    # had free once our weights were resident - the baseline _under_pressure
+    # compares against.
+    idle.configure(
+        wake=ensure_awake,
+        release=stop,
+        pressure=_under_pressure,
+        idle_seconds=config.IDLE_UNLOAD_MINUTES * 60,
+    )
     return True
+
+
+def ensure_awake():
+    """Start the server again after the idle watchdog stopped it.
+
+    Silent by design, and that is the whole difference from ensure_running:
+    this runs inside a model call the user is already watching thinking dots
+    for, so there is no status worth reporting - only an answer that takes a
+    few seconds longer than the last one.
+    """
+    ensure_running()
 
 
 def _wait_until_ready():
@@ -327,6 +358,30 @@ def others_vram_gb(free_now):
         return None
     ours = our_vram_gb() or 0.0
     return max(0.0, (total - free_now) - ours)
+
+
+def _under_pressure():
+    """True when something else has taken the card since our weights landed.
+
+    A difference, not a total, and the obvious version of this was wrong. The
+    natural rule - "the card, minus what other programs hold, can no longer fit
+    us" - cannot see the case it exists for: on an 8GB card holding a 4.7GB
+    model, a game asking for 5GB leaves the arithmetic saying other programs
+    hold about 3.1GB, which still fits us on paper while Windows quietly evicts
+    somebody. An absolute threshold on free memory fails the other way round,
+    because a model that legitimately fills the card looks like pressure the
+    moment it finishes loading.
+
+    What our own load left free is the honest baseline: a gigabyte less than
+    that means a gigabyte went to somebody else. A reload takes the reading
+    again, so this cannot oscillate.
+    """
+    free_now = current.free_vram_gb()
+    if _free_vram_after_load is None or free_now is None:
+        # Nothing loaded yet, or no card we can read - see free_vram_gb, which
+        # is nvidia-smi and nothing else. Neither is a guess worth acting on.
+        return False
+    return (_free_vram_after_load - free_now) > PRESSURE_GB
 
 
 def fit_notice():
@@ -391,6 +446,12 @@ def stop():
     call more than once, and safe to call when nothing was ever started."""
     global _process, _keepalive, _log
 
+    # Before _lock, not after: idle's lock is always the outer one of the two,
+    # and the release path arrives here already holding it. This is also the
+    # only place that ends a watch, so a stop from anywhere - a model switch,
+    # quitting, the watchdog itself - leaves nothing behind still watching.
+    idle.park()
+
     with _lock:
         process, _process = _process, None
         keepalive, _keepalive = _keepalive, None
@@ -420,3 +481,9 @@ def stop():
             log.close()
         except OSError:
             pass
+
+
+# Registered once, at import, rather than inside ensure_running. That is where
+# it used to be, and ensure_running is now called again on every wake - which
+# would stack up a handler per wake for a process that only ever needs one.
+atexit.register(stop)
