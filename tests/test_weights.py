@@ -1,4 +1,4 @@
-"""ai_shell.weights — choosing the right file, and getting it onto disk.
+"""ai_shell.weights - choosing the right file, and getting it onto disk.
 
 Two things here have no second chance. Picking the wrong file downloads
 several gigabytes of something that isn't what the user chose and fails at
@@ -167,7 +167,7 @@ class Ensure(unittest.TestCase):
     def run_ensure(self, http, listing=None):
         with mock.patch.object(weights.fetch, "json_document", api(listing or one_file())):
             with mock.patch("urllib.request.urlopen", http):
-                return weights.ensure(REF, "7B — test", say)
+                return weights.ensure(REF, "7B - test", say)
 
     def test_it_downloads_verifies_and_returns_the_path(self):
         http = StubHTTP(PAYLOAD)
@@ -197,7 +197,7 @@ class Ensure(unittest.TestCase):
                          list(weights.BACKOFF[:2]))
 
     def test_running_out_of_attempts_says_what_was_kept(self):
-        # A connection that dies before delivering anything new, every time —
+        # A connection that dies before delivering anything new, every time -
         # so the attempts are genuinely exhausted rather than inching to the
         # end. What arrived earlier has to survive that.
         with open(self.path() + ".partial", "wb") as handle:
@@ -241,8 +241,8 @@ class Ensure(unittest.TestCase):
         http = StubHTTP(PAYLOAD)
         with mock.patch.object(weights.fetch, "json_document", api(one_file())):
             with mock.patch("urllib.request.urlopen", http):
-                weights.ensure(REF, "7B — test", lines.append)
-        self.assertTrue(any("7B — test" in line for line in lines))
+                weights.ensure(REF, "7B - test", lines.append)
+        self.assertTrue(any("7B - test" in line for line in lines))
         self.assertTrue(any("100%" in line for line in lines))
 
 

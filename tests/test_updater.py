@@ -1,4 +1,4 @@
-"""ai_shell.updater — deciding what's newer, and what to do about it.
+"""ai_shell.updater - deciding what's newer, and what to do about it.
 
 The parts worth pinning here are the ones with no second chance. A version
 comparison that gets it backwards offers people a downgrade; a script that
@@ -6,8 +6,8 @@ moves the new app into place before moving the old one aside destroys a
 working install; an extractor that trusts an archive's member names writes
 wherever the archive says. None of those fail loudly at the time.
 
-The download and the process-spawning aren't exercised — they're the network
-and the OS — but everything that decides what those two are handed is.
+The download and the process-spawning aren't exercised - they're the network
+and the OS - but everything that decides what those two are handed is.
 """
 
 import os
@@ -80,7 +80,7 @@ class Assets(unittest.TestCase):
     def test_the_version_is_read_back_out_of_a_file_name(self):
         # How an already-downloaded update is recognised on a later launch,
         # when GitHub isn't being asked. Both naming styles the release
-        # produces: hyphens for the app, underscores for the wheel — and the
+        # produces: hyphens for the app, underscores for the wheel - and the
         # pre-release case, where the version itself contains the separator
         # that otherwise ends it.
         for name, suffix, want in [
@@ -198,7 +198,7 @@ class ApplyScripts(unittest.TestCase):
         script = self._windows(update)
         self.assertIn("/SILENT", script)
         self.assertIn("/SUPPRESSMSGBOXES", script)
-        # Nothing is moved by hand — Inno matches the AppId and upgrades.
+        # Nothing is moved by hand - Inno matches the AppId and upgrades.
         self.assertNotIn("move ", script)
 
     def test_the_pip_channel_installs_the_wheel_it_downloaded(self):
@@ -206,13 +206,13 @@ class ApplyScripts(unittest.TestCase):
         with mock.patch.object(updater, "install_root", lambda: None):
             script = updater._windows_script(update, [])
         # The argument pip is given has to be the wheel that was already
-        # downloaded — installing by distribution name would go to an index and
+        # downloaded - installing by distribution name would go to an index and
         # could fetch something else entirely.
         self.assertIn('-m pip install --upgrade --no-input "/tmp/nl_shell-0.2.0.whl"', script)
         # Asserted against the install target rather than the whole script: the
         # script embeds sys.executable, so a plain "nl-shell" is not in it
         # fails for anyone whose interpreter lives under a path containing the
-        # project's own name — a virtualenv in a checkout of this repository,
+        # project's own name - a virtualenv in a checkout of this repository,
         # which is the ordinary way to work on it.
         self.assertNotIn('--no-input "nl-shell"', script)
 
@@ -239,7 +239,7 @@ class ApplyScripts(unittest.TestCase):
 
 
 class Staging(unittest.TestCase):
-    """stage() — from a downloaded archive to a tree ready to be moved in.
+    """stage() - from a downloaded archive to a tree ready to be moved in.
 
     Run against a real zip and a real folder, because the things worth
     checking here are all about the disk: where the unpacked app lands, that a
@@ -375,7 +375,7 @@ class ArchiveSafety(unittest.TestCase):
             os.makedirs(destination)
             with self.assertRaises(fetch.FetchError):
                 fetch.extract(archive, destination)
-            # Not "the escape was blocked" — nothing was unpacked at all,
+            # Not "the escape was blocked" - nothing was unpacked at all,
             # because the names are checked as a set before the first write.
             self.assertEqual(os.listdir(destination), [])
             self.assertFalse(os.path.exists(os.path.join(tmp, "escaped.txt")))

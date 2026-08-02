@@ -1,4 +1,4 @@
-"""Session.run_last with a command the user edited — what runs, and what gets
+"""Session.run_last with a command the user edited - what runs, and what gets
 recorded."""
 
 import json

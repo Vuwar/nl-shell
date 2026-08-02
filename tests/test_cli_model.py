@@ -1,4 +1,4 @@
-"""The console's `model` command — the same picker, typed.
+"""The console's `model` command - the same picker, typed.
 
 The CLI has no slash commands; `update` is already a bare word, and this
 follows it.
@@ -26,7 +26,7 @@ class ModelCommand(unittest.TestCase):
         printed = out.getvalue()
         self.assertIn("1.", printed)
         self.assertIn("in use", printed)
-        # A 14B or 32B on an 8GB card is not "slower", it is unusable — the
+        # A 14B or 32B on an 8GB card is not "slower", it is unusable - the
         # distinction the speed grades exist to draw.
         self.assertIn("far too big for this machine", printed)
 

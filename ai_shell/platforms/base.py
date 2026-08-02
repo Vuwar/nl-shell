@@ -11,7 +11,7 @@ import os
 import re
 import subprocess
 
-# Matches nothing — the default for a pattern a platform hasn't got one for.
+# Matches nothing - the default for a pattern a platform hasn't got one for.
 _NEVER = re.compile(r"(?!)")
 
 
@@ -35,18 +35,18 @@ class Platform:
     # one is never expanded to a full path (see listing.resolve_listed_paths).
     NAME_PARAM = _NEVER
 
-    # A quoted absolute path inside a command — how the session works out
+    # A quoted absolute path inside a command - how the session works out
     # which folder it is now "in" (see session._remember_context).
     ABS_PATH = _NEVER
 
     # --- running commands -------------------------------------------------
-    # Extra keyword arguments for every process this app starts — the shell
+    # Extra keyword arguments for every process this app starts - the shell
     # running a command, the app scan, the hardware probe, the model server.
     # Nothing to say on a Unix, where a child process is just a child
     # process; on Windows it is what keeps a console window off the user's
     # desktop (see windows.Platform.SPAWN_KWARGS). It lives here, on the
     # platform, because the alternative is remembering it at each call site
-    # one at a time — which is how the app scan came to open a PowerShell
+    # one at a time - which is how the app scan came to open a PowerShell
     # window in front of the panel while the background server, written with
     # the flag, had none.
     SPAWN_KWARGS = {}
@@ -93,7 +93,7 @@ class Platform:
         open file `log`. Returns (process, keepalive).
 
         The child must not outlive us. ai_shell.server stops it on the way
-        out, but that only covers the exits we get to run code for — a crash,
+        out, but that only covers the exits we get to run code for - a crash,
         a kill from the task manager, or a hard power-cycle of the debugger
         all skip it, and what's left behind is a model server holding several
         gigabytes with no window to close it from. Every OS has its own way of
@@ -111,7 +111,7 @@ class Platform:
 
     # --- directory listings ----------------------------------------------
     def list_directory_command(self, path):
-        """A command listing the contents of `path` — the interfaces' own
+        """A command listing the contents of `path` - the interfaces' own
         folder navigation, where the user clicked a real folder."""
         raise NotImplementedError
 
@@ -130,7 +130,7 @@ class Platform:
         return None
 
     def listing_kind(self, command):
-        """What the listing was narrowed to — "folder", "file" or "item" — so
+        """What the listing was narrowed to - "folder", "file" or "item" - so
         a result can name it ("3 folders", or "No folders there", which is the
         readable answer to "is there any folder on the desktop?")."""
         return "item"
@@ -142,7 +142,7 @@ class Platform:
         return []
 
     def prepare_command(self, command, apps):
-        """(command_to_run, problem) — a last chance to fix `command` before
+        """(command_to_run, problem) - a last chance to fix `command` before
         it runs. `problem` is a plain sentence when it can't work at all, and
         nothing is run."""
         return command, None
@@ -164,7 +164,7 @@ class Platform:
 
     def total_ram_gb(self):
         """Physical RAM in GB, or None when it can't be read. None is a real
-        answer here — every caller treats "unknown" as "don't get clever" and
+        answer here - every caller treats "unknown" as "don't get clever" and
         falls back to a model known to run on an ordinary laptop."""
         return None
 
@@ -184,7 +184,7 @@ class Platform:
             result = subprocess.run(
                 ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
                 capture_output=True, timeout=10, **self.SPAWN_KWARGS,
-                # Numbers, so the encoding hardly matters — but text=True
+                # Numbers, so the encoding hardly matters - but text=True
                 # decodes strictly under the locale, and a probe that decides
                 # how much of the model goes on the GPU should not be able to
                 # fail over a byte in a driver's product name.
@@ -200,7 +200,7 @@ class Platform:
 
         Both columns are asked for, not just the free one, because vram_gb
         reports the largest single card and this has to be that same card's
-        free memory — the first row and the sum are both the wrong answer on a
+        free memory - the first row and the sum are both the wrong answer on a
         machine with two GPUs.
 
         None on AMD, on Intel, on anything without nvidia-smi, and on a probe
@@ -229,7 +229,7 @@ class Platform:
     def vram_is_shared(self):
         """Whether vram_gb is a slice of main memory rather than a card's own.
 
-        False everywhere with a discrete GPU. Apple Silicon overrides it — see
+        False everywhere with a discrete GPU. Apple Silicon overrides it - see
         macos.vram_gb, which returns a fraction of RAM that macOS has already
         reserved out, and must not be reserved out of again."""
         return False
@@ -256,7 +256,7 @@ class Platform:
         }
 
     def split_pipeline(self, command):
-        """Splits on top-level `|` only — a pipe inside quotes or a nested
+        """Splits on top-level `|` only - a pipe inside quotes or a nested
         block belongs to the stage, not between stages."""
         stages, buf, quote, depth = [], [], None, 0
         for ch in command:
@@ -285,7 +285,7 @@ class Platform:
         The model can only guess where an app lives, and guesses go stale. The
         OS's own list of installed applications finds the real launch target
         regardless. Matching is against the app name the command tried to
-        start — never the user's whole sentence — so this can only relocate
+        start - never the user's whole sentence - so this can only relocate
         that same app, not swap in a different one."""
         target = re.sub(r"[^a-z0-9]", "", re.sub(r"\.(exe|app)$", "", app_name.lower()))
         if not target:

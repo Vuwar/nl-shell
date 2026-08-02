@@ -4,8 +4,8 @@ The rest of ai_shell is written against `current`, the platform object for the
 machine it's running on, so no other module has to ask which OS this is. A
 platform supplies three kinds of thing:
 
-  * how to run something — which shell, how to quote, how to open a file
-  * how to talk to the model about this OS — its shell's name, its path
+  * how to run something - which shell, how to quote, how to open a file
+  * how to talk to the model about this OS - its shell's name, its path
     style, the conventions its commands are expected to follow
   * how to find and launch installed applications, which is the one part
     every OS does completely differently

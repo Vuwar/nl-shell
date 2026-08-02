@@ -44,7 +44,7 @@ _CREATE_NO_WINDOW = 0x08000000
 
 # Job-object plumbing for start_background. A job with KILL_ON_JOB_CLOSE set
 # terminates every process in it the moment the last handle to the job goes
-# away — including when that happens because the owning process died without
+# away - including when that happens because the owning process died without
 # cleaning up, which is exactly the case an atexit hook can't cover.
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
 _JobObjectExtendedLimitInformation = 9
@@ -89,7 +89,7 @@ class _JobExtendedLimits(ctypes.Structure):
 
 
 class _JobHandle:
-    """Owns a job handle, and closes it — killing the job's processes — when
+    """Owns a job handle, and closes it - killing the job's processes - when
     it's dropped. Being an object rather than a bare handle is the point: the
     caller holding a reference is what keeps the server alive, so the link
     can't be lost by forgetting to store an integer somewhere."""
@@ -107,7 +107,7 @@ class _JobHandle:
 
 class _MemoryStatusEx(ctypes.Structure):
     """MEMORYSTATUSEX, for GlobalMemoryStatusEx. Every field has to be declared
-    even though only ullTotalPhys is read — the call writes the whole struct
+    even though only ullTotalPhys is read - the call writes the whole struct
     and validates dwLength against its own idea of the size."""
 
     _fields_ = [
@@ -171,59 +171,59 @@ class Windows(Platform):
 
     LISTING_RULE = (
         "Answer yes/no questions about files or folders by listing the things "
-        "that match\n   — Get-ChildItem with -Directory, -File or -Filter — so "
+        "that match\n   - Get-ChildItem with -Directory, -File or -Filter - so "
         "an empty result\n   means \"no\" and a non-empty one shows what was "
         "found. Never test each item\n   in a loop into a column of booleans."
     )
 
-    EXAMPLES = """Example — risky request:
+    EXAMPLES = """Example - risky request:
 User: delete the file called old_notes.txt
 {"command": "Remove-Item -Path 'old_notes.txt'", "risk": "risky", "explanation": "Permanently deletes old_notes.txt."}
 
-Example — opening/launching a specific, named application:
+Example - opening/launching a specific, named application:
 User: open opera gx
 {"command": "Start-Process 'Opera GX'", "risk": "safe", "explanation": "Launches Opera GX."}
 
-Example — yes/no question about files (list the matches, don't test each item):
+Example - yes/no question about files (list the matches, don't test each item):
 User: is there any folder on the desktop
 {"command": "Get-ChildItem -Path $env:USERPROFILE\\Desktop -Directory", "risk": "safe", "explanation": "Lists the folders on your desktop."}
 
-Example — follow-up referring to an earlier result (reuse the path from the note):
-Note: (context from the shell, not the user) Ran: Get-ChildItem -Path C:\\Users\\Me\\Desktop\\Photos — Listed 12 items... Folder in context: C:\\Users\\Me\\Desktop\\Photos
+Example - follow-up referring to an earlier result (reuse the path from the note):
+Note: (context from the shell, not the user) Ran: Get-ChildItem -Path C:\\Users\\Me\\Desktop\\Photos - Listed 12 items... Folder in context: C:\\Users\\Me\\Desktop\\Photos
 User: now zip that
 {"command": "Compress-Archive -Path 'C:\\Users\\Me\\Desktop\\Photos' -DestinationPath 'C:\\Users\\Me\\Desktop\\Photos.zip'", "risk": "safe", "explanation": "Zips the Photos folder next to itself."}
 
-Example — vague target (ask, don't guess):
+Example - vague target (ask, don't guess):
 User: open a browser
 {"command": null, "risk": null, "explanation": "Which browser would you like me to open?", "options": ["Opera GX", "Microsoft Edge", "Google Chrome"]}
 
-Example — something only the internet can answer (search, never refuse):
+Example - something only the internet can answer (search, never refuse):
 User: what's the latest version of python
 {"command": null, "search": "latest Python version release", "risk": null, "explanation": "Looking that up on the web.", "options": null}
 
-Example — about this computer, not the world (a command, not a search):
+Example - about this computer, not the world (a command, not a search):
 User: how much disk space have I got left
 {"command": "Get-PSDrive -PSProvider FileSystem | ForEach-Object { \\"$($_.Name): $([math]::Round($_.Free/1GB,1)) GB free\\" }", "search": null, "risk": "safe", "explanation": "Shows the free space on each drive.", "options": null}
 
-Example — small talk, even with earlier results in the conversation (just
+Example - small talk, even with earlier results in the conversation (just
 answer; the user asked for nothing, so there is nothing to offer):
-Note: (context from the shell, not the user) Ran: Get-ChildItem -Path C:\\Users\\Me\\Desktop — Listed 8 items... Folder in context: C:\\Users\\Me\\Desktop
+Note: (context from the shell, not the user) Ran: Get-ChildItem -Path C:\\Users\\Me\\Desktop - Listed 8 items... Folder in context: C:\\Users\\Me\\Desktop
 User: hey
 {"command": null, "risk": null, "explanation": "Hey! Tell me what you'd like to do and I'll take care of it.", "options": null}
 """
 
     LAUNCH_NOTE = """Requests to open, launch, start, or run a specific, named application are
-always valid, safe shell requests — never refuse those. Use the app's name
+always valid, safe shell requests - never refuse those. Use the app's name
 as the Start-Process target; if the exact path differs the shell has its
 own fallback to find that same app. But when the user hasn't named which
-app they mean, ask — the fallback can only launch the app you name, so a
+app they mean, ask - the fallback can only launch the app you name, so a
 wrong guess fails instead of opening something else."""
 
     # --- running commands -------------------------------------------------
     # CREATE_NO_WINDOW, on everything this app starts.
     #
     # The desktop app is a windowed binary with no console of its own, so
-    # Windows gives every console child a brand new one — and on Windows 11
+    # Windows gives every console child a brand new one - and on Windows 11
     # that console is hosted by Windows Terminal, which means a full terminal
     # window, tabs and all, appearing over the desktop. The installed-app
     # scan runs from Session.__init__, before the panel is drawn, so without
@@ -239,7 +239,7 @@ wrong guess fails instead of opening something else."""
         # The preamble is not cosmetic. Windows PowerShell writes redirected
         # output in the console's OEM codepage, so a filename or an app name
         # containing anything outside ASCII comes back as bytes whose meaning
-        # depends on the machine's regional settings — and the caller, reading
+        # depends on the machine's regional settings - and the caller, reading
         # them as text, has no way to know which codepage it got. Pinning the
         # output to UTF-8 makes what we read the same on every machine.
         #
@@ -273,7 +273,7 @@ wrong guess fails instead of opening something else."""
         gets there, so `input()` comes up with it already on the line and the
         console's own editor handles arrows and backspace.
 
-        None whenever there is no real console to write into — a redirected
+        None whenever there is no real console to write into - a redirected
         stdin, which is what a test run, a pipe and CI all have. The caller
         then prints a type-over prompt instead.
         """
@@ -328,7 +328,7 @@ wrong guess fails instead of opening something else."""
         child can't be orphaned.
 
         Failing to build the job is not fatal. It's the safety net, not the
-        mechanism — and it legitimately fails where we're already inside
+        mechanism - and it legitimately fails where we're already inside
         someone else's job that forbids nesting, which some sandboxes and CI
         runners do. A server that might outlive a crash beats no server."""
         kernel32 = ctypes.windll.kernel32
@@ -426,7 +426,7 @@ wrong guess fails instead of opening something else."""
             if len(fields) != 4:
                 return None
             is_dir, size, modified, path = (f.strip() for f in fields)
-            # No FullName means this wasn't a file at all — Get-Item can just
+            # No FullName means this wasn't a file at all - Get-Item can just
             # as well be pointed at a registry key or an environment variable,
             # whose properties come back empty. Raw output is the honest
             # answer there.
@@ -451,7 +451,7 @@ wrong guess fails instead of opening something else."""
 
     # --- installed applications -------------------------------------------
     def list_apps(self):
-        """The Start Menu's own index — the same one the Start Menu searches."""
+        """The Start Menu's own index - the same one the Start Menu searches."""
         script = 'Get-StartApps | ForEach-Object { "$($_.Name)|$($_.AppID)" }'
         try:
             result = subprocess.run(
@@ -465,7 +465,7 @@ wrong guess fails instead of opening something else."""
         # exception is raised there and surfaces here only as stdout being
         # None. That is what made a stray byte in one app's name an
         # AttributeError deep in a background thread rather than a caught
-        # error — the scan died and app launching stopped working, silently.
+        # error - the scan died and app launching stopped working, silently.
         apps = []
         for line in (result.stdout or "").splitlines():
             name, sep, app_id = line.partition("|")
@@ -475,7 +475,7 @@ wrong guess fails instead of opening something else."""
 
     def retry_command(self, command, result, apps):
         """Start-Process couldn't find what it was pointed at, so look the app
-        up in the Start Menu index instead — the model can only guess at
+        up in the Start Menu index instead - the model can only guess at
         install paths, and per-user LOCALAPPDATA installs defeat those guesses."""
         if (
             isinstance(result, Exception)

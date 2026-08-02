@@ -1,4 +1,4 @@
-"""ai_shell.server — what llama-server is actually told to do.
+"""ai_shell.server - what llama-server is actually told to do.
 
 The command line is the whole contract with the inference engine, and it is
 the one part of starting a server that can be checked without starting one.
@@ -24,7 +24,7 @@ class Argv(unittest.TestCase):
 
     def test_one_slot_not_four(self):
         # Left to itself this build opens four slots and gives each the full
-        # context, so -c 8192 becomes four caches of 8192 — about 1.8GB of a
+        # context, so -c 8192 becomes four caches of 8192 - about 1.8GB of a
         # 7B's graphics memory held for three conversations nobody is having,
         # taken out of the budget the weights need.
         argv = server._argv("/bin/llama-server", "/models/model.gguf")

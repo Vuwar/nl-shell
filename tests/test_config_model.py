@@ -1,4 +1,4 @@
-"""ai_shell.config — the model choice, and changing it without a restart.
+"""ai_shell.config - the model choice, and changing it without a restart.
 
 Everything here is module state that other modules read. The tests that matter
 are the ones asserting they read it *late*: a value bound at import time is a
@@ -85,7 +85,7 @@ class InstalledWeights(unittest.TestCase):
             self.assertEqual(config.installed_models(), set())
 
     def test_weights_downloaded_by_an_older_build_are_found_on_disk(self):
-        # Nothing recorded — the build that fetched these kept no note. The
+        # Nothing recorded - the build that fetched these kept no note. The
         # file is right there, and saying "6.3GB download" next to it is a
         # lie the user has to take on trust.
         with tempfile.TemporaryDirectory() as folder:

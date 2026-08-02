@@ -10,7 +10,7 @@ from ai_shell.web import format_sources
 
 
 def run():
-    """Start the model server, then the REPL — the whole `ai-shell` command.
+    """Start the model server, then the REPL - the whole `ai-shell` command.
 
     Separate from main() so that starting the server stays optional for anyone
     driving the REPL against one they're already running, and so run_cli.py and
@@ -44,13 +44,13 @@ def main():
 
     # Looks for a newer release and downloads it in the background; installing
     # it is the "update" command below. relaunch=[] because this is a console
-    # session — coming back as a new window nobody asked for would be worse
+    # session - coming back as a new window nobody asked for would be worse
     # than the user typing `ai-shell` again.
     updates = updater.Updater(relaunch=[])
     updates.start()
     announced = False
 
-    print("AI Shell — type what you want in plain English. Ctrl+C to quit.\n")
+    print("AI Shell - type what you want in plain English. Ctrl+C to quit.\n")
 
     # Claimed through the session, so this and the after-a-slow-answer
     # explanation can't both be printed: same sentence, same card.
@@ -66,7 +66,7 @@ def main():
             waiting = updates.status()
             if waiting["state"] == "ready":
                 announced = True
-                print(f"  (version {waiting['version']} is downloaded — type 'update' to install it)\n")
+                print(f"  (version {waiting['version']} is downloaded - type 'update' to install it)\n")
 
         try:
             user_input = input("ai> ").strip()
@@ -115,7 +115,7 @@ def main():
             if isinstance(options, list):
                 opts = [o.strip() for o in options if isinstance(o, str) and o.strip()][:4]
                 if opts:
-                    print("  " + " / ".join(opts) + " — type the one you want (or anything else)")
+                    print("  " + " / ".join(opts) + " - type the one you want (or anything else)")
             continue
 
         print(f"→ {explanation}")
@@ -152,7 +152,7 @@ def _model_note(row):
 
     The two are separate facts and both matter. A model already downloaded is
     a free switch even where it doesn't fit, and one that doesn't fit is no
-    longer unusable — as much of it as fits goes on the card, which is worth a
+    longer unusable - as much of it as fits goes on the card, which is worth a
     warning about speed but not the "too big" it used to get.
     """
     if row["current"]:
@@ -195,9 +195,9 @@ def _model_command(argument):
         return
     if not chosen["fits"]:
         print(f"  {chosen['label']} is bigger than your graphics card can hold, so part of it "
-              f"will run from ordinary memory — it works, just slower.")
+              f"will run from ordinary memory - it works, just slower.")
     if not chosen["installed"]:
-        print(f"  Downloading {chosen['label']} — {chosen['weights_gb']}GB, this takes a while.")
+        print(f"  Downloading {chosen['label']} - {chosen['weights_gb']}GB, this takes a while.")
 
     result = server.switch_model(chosen["id"], on_status=lambda line: print(f"  {line}"))
     if not result["ok"]:
@@ -211,7 +211,7 @@ def _edit_command(command):
 
     Two ways in. Where the platform can seed the console's own line editor,
     the command is already on the line and the user fixes the part that's
-    wrong. Where it can't — a redirected stdin, an unusual terminal — the
+    wrong. Where it can't - a redirected stdin, an unusual terminal - the
     command has just been printed above, and whatever is typed replaces it
     whole.
 
@@ -234,7 +234,7 @@ def _edit_command(command):
 def _install_update(updates):
     """The `update` command: hand over to the updater and leave.
 
-    Leaving is the point — the files being replaced are the ones this process
+    Leaving is the point - the files being replaced are the ones this process
     is running out of, so the script the updater starts is waiting for this
     interpreter to exit before it touches anything.
     """
@@ -243,7 +243,7 @@ def _install_update(updates):
         print(
             {
                 "checking": "  Still checking for one.",
-                "downloading": f"  Downloading it now — {state['message']}",
+                "downloading": f"  Downloading it now - {state['message']}",
                 "failed": f"  Couldn't fetch an update: {state['message']}",
             }.get(state["state"], "  You're on the latest version.")
         )

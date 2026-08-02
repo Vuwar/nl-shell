@@ -2,7 +2,7 @@
 moment the prompt appears rather than failing on the first request.
 
 The same two steps are behind the `ai-shell` command an install puts on your
-PATH — see ai_shell_cli.app.run. This is the version that runs out of a
+PATH - see ai_shell_cli.app.run. This is the version that runs out of a
 checkout, with nothing installed.
 """
 

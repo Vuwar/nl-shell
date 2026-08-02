@@ -1,4 +1,4 @@
-"""ai_shell.models — which model this machine is handed.
+"""ai_shell.models - which model this machine is handed.
 
 The table in RecommendedModel is the regression this file exists for: an 8GB
 card was handed a 7.875GB model because the budget was the card's total rather

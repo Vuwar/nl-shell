@@ -3,9 +3,9 @@
 Two parts of this app download a release archive and unpack it into a folder:
 ai_shell.runtime, which installs llama.cpp the first time, and
 ai_shell.updater, which installs a newer version of the app itself. They want
-the same four things — a GitHub release's assets, a download with progress, an
+the same four things - a GitHub release's assets, a download with progress, an
 extractor that can't write outside the folder it was given, and the executable
-bit a zip doesn't carry — so those live here rather than in one of them with
+bit a zip doesn't carry - so those live here rather than in one of them with
 the other importing from it sideways.
 
 Nothing here knows what it's downloading or why. That's deliberate: an
@@ -58,7 +58,7 @@ def json_document(url, timeout=30):
 def github_release(api_url, timeout=30):
     """(tag, {asset name: download url}) for a GitHub release endpoint.
 
-    Works for /releases/latest and /releases/tags/<tag> alike — they return
+    Works for /releases/latest and /releases/tags/<tag> alike - they return
     the same shape, and which one to ask for is the caller's business.
     """
     data = json_document(api_url, timeout)
@@ -76,7 +76,7 @@ def download(url, destination, on_progress=None, timeout=60, resume=False):
     With `resume`, an existing `destination` is continued rather than
     replaced: its length becomes a Range request, and the body is appended.
     Whatever arrived before a failure therefore stays on disk and is worth
-    something to the next attempt — which for a six-gigabyte model is the
+    something to the next attempt - which for a six-gigabyte model is the
     difference between a retry and starting the evening again.
 
     Nothing is renamed here. A caller that wants a partial file to be
@@ -125,7 +125,7 @@ def check_members(names, root):
     """Refuse an archive whose members would be written outside `root`.
 
     A release built by the project's own CI is not the threat this guards
-    against — a substituted or corrupted archive is, and an extractor that can
+    against - a substituted or corrupted archive is, and an extractor that can
     write anywhere on the disk is worth not having. Absolute paths and `..`
     both land outside `root` once resolved, so one check covers them.
     """

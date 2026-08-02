@@ -1,4 +1,4 @@
-"""ai_shell.fit — how much of a graphics card a model may actually have.
+"""ai_shell.fit - how much of a graphics card a model may actually have.
 
 The numbers here are the ones that shipped a 7.875GB model onto an 8GB card
 that already had 5.5GB of desktop on it, so the boundary cases are the point.
@@ -48,7 +48,7 @@ class Verdict(unittest.TestCase):
         self.assertIsNone(fit.verdict(self.q4, 8.0, 7.4))
 
     def test_exactly_at_the_boundary_fits(self):
-        # 6.8 usable, footprint 6.8 — a model that exactly fills the budget is
+        # 6.8 usable, footprint 6.8 - a model that exactly fills the budget is
         # allowed. The bug was the >= against the *unreserved* total.
         exact = models.Model("exact", "ref", "exact", 6.8 / 1.25)
         self.assertIsNone(fit.verdict(exact, 8.0, 8.0))
@@ -114,7 +114,7 @@ class GpuLayers(unittest.TestCase):
 
     def test_shared_memory_keeps_no_safety_margin(self):
         # There is no separate card to overrun, and no bus to cross when it
-        # fills — the reserve there is the operating system's business. The
+        # fills - the reserve there is the operating system's business. The
         # same 5.8GB that buys a partial split on a discrete card takes the
         # whole model on unified memory.
         self.assertEqual(fit.gpu_layers(self.q4, 5.8, 8192, shared=True), -1)

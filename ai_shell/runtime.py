@@ -8,8 +8,8 @@ downloaded, unzipped and put on PATH by hand before anything would run at all.
 What it does is deliberately narrow:
 
   * It only acts when nothing is found. An installed llama-server on PATH wins,
-    and a path the user set explicitly — AI_SHELL_SERVER, or server_binary in
-    settings.json — is taken at face value and never second-guessed, because
+    and a path the user set explicitly - AI_SHELL_SERVER, or server_binary in
+    settings.json - is taken at face value and never second-guessed, because
     somebody who names a build has a reason for that build.
   * It installs into the app's own config folder, not into the system. Nothing
     is put on PATH, nothing needs an administrator, and uninstalling is
@@ -20,8 +20,8 @@ What it does is deliberately narrow:
 
 Which build it takes follows config.GPU_LAYERS, so the binary matches the
 decision already made about where the model will run. A machine offloading to
-a GPU gets the Vulkan build — one archive, every vendor, no separate runtime
-to match against a driver version — and a machine running on the CPU gets the
+a GPU gets the Vulkan build - one archive, every vendor, no separate runtime
+to match against a driver version - and a machine running on the CPU gets the
 CPU build. Neither can be wrong in a way that breaks the app: llama.cpp loads
 its backends dynamically, so a Vulkan build on a machine whose driver won't
 have it falls back to the CPU backend inside the same executable.
@@ -31,7 +31,7 @@ buys a 30MB download instead of a 600MB one (the CUDA build needs the CUDA
 runtime alongside it) and removes the driver/runtime version matching, which
 is the part that fails on someone else's machine. Users who want the last of
 the performance can install that build themselves and point AI_SHELL_SERVER at
-it — which is the case the first rule above exists to protect.
+it - which is the case the first rule above exists to protect.
 """
 
 import os
@@ -41,7 +41,7 @@ import shutil
 from ai_shell import config, fetch
 
 # The release the binaries come from. ggml-org is llama.cpp's own org, and
-# these are the builds its release page offers — the same ones the README
+# these are the builds its release page offers - the same ones the README
 # tells a user to download by hand.
 RELEASES_API = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
 
@@ -136,7 +136,7 @@ def _install(say):
             f"(looked for {', '.join(wanted)})."
         )
 
-    say(f"Installing llama.cpp {tag} ({name}) — this happens once.")
+    say(f"Installing llama.cpp {tag} ({name}) - this happens once.")
 
     # Staged next to the final folder and moved into place at the end, so an
     # interrupted download leaves nothing that looks like a working install.
@@ -149,7 +149,7 @@ def _install(say):
         # Named in full rather than "%": these lines are also the desktop
         # panel's startup message, where a bare number says nothing.
         fetch.download(
-            assets[name], archive_path, lambda percent: say(f"Downloading llama.cpp — {percent}%")
+            assets[name], archive_path, lambda percent: say(f"Downloading llama.cpp - {percent}%")
         )
         fetch.extract(archive_path, staging)
         os.remove(archive_path)
@@ -181,7 +181,7 @@ def ensure(on_status=None):
     """The llama-server this app should run, installing one if it has to.
 
     Raises InstallError when there's nothing to run and nothing could be
-    fetched — the caller turns that into the message the user sees.
+    fetched - the caller turns that into the message the user sees.
     """
     def say(message):
         if on_status:

@@ -1,4 +1,4 @@
-"""ai_shell.platforms — reading how much graphics memory is free right now.
+"""ai_shell.platforms - reading how much graphics memory is free right now.
 
 The reading decides whether the user is told their card is full, so a probe
 that guesses is worse than one that admits it doesn't know: every caller

@@ -2,16 +2,16 @@
 
 Three sources, most specific first:
 
-  1. an environment variable — a one-off override, for trying something
+  1. an environment variable - a one-off override, for trying something
      without editing anything;
-  2. settings.json in the per-user config folder — what the settings screen
+  2. settings.json in the per-user config folder - what the settings screen
      writes, and what persists;
   3. a default worked out from the machine on first run, then written to (2)
      so it's only worked out once.
 
 The third is the reason this file is no longer four constants. A model that
 fits the developer's laptop is not a model that fits everyone's, and the
-project can't know which machine it's on until it's on one — so the first
+project can't know which machine it's on until it's on one - so the first
 launch measures, chooses, and records. See ai_shell.models for the list it
 chooses from and ai_shell.hardware for the measuring.
 
@@ -58,7 +58,7 @@ def _read_settings():
 
 def _write_settings(data):
     """Best-effort persist. A read-only config folder is not a reason to
-    refuse to start — it only means the hardware probe runs again next time."""
+    refuse to start - it only means the hardware probe runs again next time."""
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
         with open(SETTINGS_PATH, "w", encoding="utf-8") as handle:
@@ -68,7 +68,7 @@ def _write_settings(data):
 
 
 def _resolve():
-    """(settings, model, first_run) — the stored settings brought up to date
+    """(settings, model, first_run) - the stored settings brought up to date
     with a model that exists, probing the machine only if nothing valid is
     recorded yet."""
     settings = _read_settings()
@@ -90,7 +90,7 @@ def _resolve():
 def _oversized(model, settings):
     """Whether the recorded model is too big for the card it was chosen for.
 
-    True only for the permanent mismatch — a card that cannot hold this model
+    True only for the permanent mismatch - a card that cannot hold this model
     however much the user closes. It is reported, never acted on: the model
     the user has been running is not something to replace out from under them
     because a rule changed under their settings file.
@@ -108,7 +108,7 @@ _SETTINGS, _MODEL, FIRST_RUN = _resolve()
 
 # Whether the model this app is about to run cannot fit the card it was chosen
 # for. Set for settings files written before the GPU budget reserved anything
-# for the desktop. Nothing is changed on the strength of it — the interfaces
+# for the desktop. Nothing is changed on the strength of it - the interfaces
 # raise it with the user, who decides.
 MODEL_OVERSIZED = _oversized(_MODEL, _SETTINGS)
 
@@ -147,13 +147,13 @@ PORT = int(os.environ.get("AI_SHELL_PORT") or _SETTINGS.get("port") or DEFAULT_P
 CONTEXT_SIZE = int(os.environ.get("AI_SHELL_CONTEXT") or _SETTINGS.get("context") or DEFAULT_CONTEXT)
 
 # Where the llama-server executable is. The bare name means "on PATH", which
-# is what a normal install looks like — and when it isn't there either,
+# is what a normal install looks like - and when it isn't there either,
 # ai_shell.runtime fetches one into CONFIG_DIR rather than failing.
 _NAMED_SERVER = os.environ.get("AI_SHELL_SERVER") or _SETTINGS.get("server_binary")
 SERVER_BINARY = _NAMED_SERVER or "llama-server"
 
-# Whether that name came from the user. A build somebody chose deliberately —
-# a CUDA one, a local compile — must be used as given and never quietly
+# Whether that name came from the user. A build somebody chose deliberately -
+# a CUDA one, a local compile - must be used as given and never quietly
 # replaced by one we downloaded, so this is what turns the auto-install off.
 SERVER_BINARY_EXPLICIT = bool(_NAMED_SERVER)
 
@@ -183,7 +183,7 @@ LAST_UPDATE_CHECK = _SETTINGS.get("update_checked_at") or 0
 
 # Whether an edited command is recorded to CONFIG_DIR/corrections.jsonl. On by
 # default, and unlike anything that reads existing shell history this only sees
-# commands typed into this app, in this session, on their way to running — it
+# commands typed into this app, in this session, on their way to running - it
 # never leaves the machine. Off by default would collect nothing, which is the
 # same as not having the feature. See ai_shell/corrections.py for what a record
 # holds and what is scrubbed out of it first.
@@ -199,7 +199,7 @@ CORRECTIONS = (os.environ.get("AI_SHELL_CORRECTIONS") or "").strip() != "0" and 
 # The budget is fit.usable_vram_gb, not the card's total, so a model recorded
 # by an older build that cannot fit runs on the CPU instead of being paged
 # across the bus. On the machine this was written for that is roughly 4 tokens
-# a second rather than 0.8 — and it makes the warning's "runs from ordinary
+# a second rather than 0.8 - and it makes the warning's "runs from ordinary
 # memory" literally true.
 _VRAM = HARDWARE.get("vram_gb")
 _SHARED = HARDWARE.get("vram_shared", False)
@@ -209,8 +209,8 @@ _ENV_BASE_URL = os.environ.get("AI_SHELL_BASE_URL")
 BASE_URL = _ENV_BASE_URL or f"http://{HOST}:{PORT}/v1"
 
 # Whether to start and stop the server ourselves. Pointing AI_SHELL_BASE_URL
-# somewhere is a statement that something is already running there — an Ollama
-# install, a shared box, a llama-server with hand-picked flags — and spawning
+# somewhere is a statement that something is already running there - an Ollama
+# install, a shared box, a llama-server with hand-picked flags - and spawning
 # a second server to ignore would be both wasteful and confusing.
 MANAGED_SERVER = _ENV_BASE_URL is None
 
@@ -222,7 +222,7 @@ API_KEY = "local"
 # Reading web results and saying what they mean is the one job here where a
 # small model fails without looking like it failed (see models._SUMMARY_FLOOR).
 # The app can't make a 3B better at it, but it can stop presenting its answer
-# with the same confidence as a 14B's — so the interfaces print this once
+# with the same confidence as a 14B's - so the interfaces print this once
 # alongside the first web answer of a session, and the sources stay visible
 # underneath either way.
 #
@@ -235,11 +235,11 @@ def _summary_caveat(model):
     answer: switching down to a 3B is exactly when it starts applying."""
     if not (MANAGED_SERVER and MODEL == model.id) or models.summarizes_reliably(model):
         return None
-    # The label's first half is the size ("3B — light"); the qualifier after
+    # The label's first half is the size ("3B - light"); the qualifier after
     # it is for the settings screen's list, not for a sentence.
     return (
-        f"The {model.label.split(' — ')[0]} model this computer runs is a small one, so its "
-        f"reading of these results can be hit-or-miss — the sources are the part to trust."
+        f"The {model.label.split(' - ')[0]} model this computer runs is a small one, so its "
+        f"reading of these results can be hit-or-miss - the sources are the part to trust."
     )
 
 
@@ -257,7 +257,7 @@ def set_model(model_id):
 
     Every value derived from the model is recomputed here rather than left to
     a restart, because the interfaces switch models in a running process. The
-    weights are not fetched here — that is ai_shell.server's job, on the next
+    weights are not fetched here - that is ai_shell.server's job, on the next
     ensure_running, which reports progress the user can watch.
     """
     global _MODEL, MODEL, MODEL_REF, MODEL_LABEL, GPU_LAYERS
@@ -299,7 +299,7 @@ def installed_models():
     download recorded is exact, and it is still checked rather than believed:
     weights are large, and that folder is the first place somebody goes when a
     drive fills up. Failing that, the folder is read and file names are matched
-    against each model's reference — which is how weights fetched by a build
+    against each model's reference - which is how weights fetched by a build
     that kept no record are found, rather than being reported as a download the
     user has already done.
 
@@ -336,7 +336,7 @@ def remember_update_check(when):
 
 
 def connection_error():
-    """What to tell the user when the model can't be reached — one message,
+    """What to tell the user when the model can't be reached - one message,
     shared, because the CLI and the GUI were drifting apart on it.
 
     Which advice is useful depends on whose server it is. When we start it,
@@ -345,7 +345,7 @@ def connection_error():
     answering."""
     if MANAGED_SERVER and SERVER_BINARY_EXPLICIT:
         # Their binary, so the useful question is whether the one they named
-        # actually works — nothing was installed on their behalf to blame.
+        # actually works - nothing was installed on their behalf to blame.
         return (
             f"Couldn't reach the local model server on port {PORT}.\n"
             f"Check that '{SERVER_BINARY}' runs, or unset AI_SHELL_SERVER to "

@@ -21,7 +21,7 @@ def _die_with_parent():
     except OSError:
         pass
 
-# A backgrounded launch — the form the model is told to use, and the only
+# A backgrounded launch - the form the model is told to use, and the only
 # shape of command treated as "start an application". A trailing `&&` is a
 # chain, not a background job.
 _BACKGROUNDED = re.compile(r"(?<!&)&\s*$")
@@ -44,49 +44,49 @@ class Linux(Posix):
     APP_SOURCE = "installed applications"
     JARGON = "bash, the shell, commands, flags, exit codes, or syntax"
 
-    EXAMPLES = r"""Example — risky request:
+    EXAMPLES = r"""Example - risky request:
 User: delete the file called old_notes.txt
 {"command": "rm 'old_notes.txt'", "risk": "risky", "explanation": "Permanently deletes old_notes.txt."}
 
-Example — opening/launching a specific, named application:
+Example - opening/launching a specific, named application:
 User: open firefox
 {"command": "nohup firefox >/dev/null 2>&1 &", "risk": "safe", "explanation": "Launches Firefox."}
 
-Example — yes/no question about files (list the matches, don't test each item):
+Example - yes/no question about files (list the matches, don't test each item):
 User: is there any folder on the desktop
 {"command": "find \"$HOME/Desktop\" -maxdepth 1 -mindepth 1 -type d ! -name '.*'", "risk": "safe", "explanation": "Lists the folders on your desktop."}
 
-Example — follow-up referring to an earlier result (reuse the path from the note):
-Note: (context from the shell, not the user) Ran: find '/home/me/Desktop/Photos' -maxdepth 1 -mindepth 1 — Listed 12 items... Folder in context: /home/me/Desktop/Photos
+Example - follow-up referring to an earlier result (reuse the path from the note):
+Note: (context from the shell, not the user) Ran: find '/home/me/Desktop/Photos' -maxdepth 1 -mindepth 1 - Listed 12 items... Folder in context: /home/me/Desktop/Photos
 User: now zip that
 {"command": "zip -r '/home/me/Desktop/Photos.zip' '/home/me/Desktop/Photos'", "risk": "safe", "explanation": "Zips the Photos folder next to itself."}
 
-Example — vague target (ask, don't guess):
+Example - vague target (ask, don't guess):
 User: open a browser
 {"command": null, "risk": null, "explanation": "Which browser would you like me to open?", "options": ["Firefox", "Google Chrome", "Chromium"]}
 
-Example — something only the internet can answer (search, never refuse):
+Example - something only the internet can answer (search, never refuse):
 User: what's the latest version of python
 {"command": null, "search": "latest Python version release", "risk": null, "explanation": "Looking that up on the web.", "options": null}
 
-Example — about this computer, not the world (a command, not a search):
+Example - about this computer, not the world (a command, not a search):
 User: how much disk space have I got left
 {"command": "df -h /", "search": null, "risk": "safe", "explanation": "Shows the free space on your main drive.", "options": null}
 
-Example — small talk, even with earlier results in the conversation (just
+Example - small talk, even with earlier results in the conversation (just
 answer; the user asked for nothing, so there is nothing to offer):
-Note: (context from the shell, not the user) Ran: find '/home/me/Desktop' -maxdepth 1 -mindepth 1 — Listed 8 items... Folder in context: /home/me/Desktop
+Note: (context from the shell, not the user) Ran: find '/home/me/Desktop' -maxdepth 1 -mindepth 1 - Listed 8 items... Folder in context: /home/me/Desktop
 User: hey
 {"command": null, "risk": null, "explanation": "Hey! Tell me what you'd like to do and I'll take care of it.", "options": null}
 """
 
     LAUNCH_NOTE = """Requests to open, launch, start, or run a specific, named application are
-always valid, safe shell requests — never refuse those. Start one as
-`nohup <program> >/dev/null 2>&1 &` — the `&` matters, because without it
+always valid, safe shell requests - never refuse those. Start one as
+`nohup <program> >/dev/null 2>&1 &` - the `&` matters, because without it
 the shell waits for the app to be closed again and the user gets nothing
 back. Use the program's usual command name; if it isn't installed under
 that name the shell has its own fallback to find that same app. But when
-the user hasn't named which app they mean, ask — the fallback can only
+the user hasn't named which app they mean, ask - the fallback can only
 launch the app you name, so a wrong guess fails instead of opening
 something else."""
 
@@ -190,7 +190,7 @@ something else."""
         Unlike Windows and macOS there is no launcher to report back that an
         app is missing: the model writes the program name directly, and a
         backgrounded name that doesn't exist fails silently in a subshell that
-        has already been disowned. So the check happens before anything runs —
+        has already been disowned. So the check happens before anything runs -
         if the name isn't on PATH, the desktop entries say how that app is
         really started, and if they don't have it either, nothing is run and
         the user is told why."""

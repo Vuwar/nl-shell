@@ -1,6 +1,6 @@
 """The model's weights: finding them, fetching them, and keeping what arrived.
 
-Until now llama-server did this itself — `-hf <repo>:<quant>` resolves,
+Until now llama-server did this itself - `-hf <repo>:<quant>` resolves,
 downloads and caches the GGUF. That worked until a connection dropped. Its
 downloader tries three times over six seconds, exits, and discards the partial
 file, so twelve minutes of downloading became nothing and the app could only
@@ -66,7 +66,7 @@ def _matching(names, quant):
 
     Anchored rather than a substring test: 'q6_k' is a substring of 'q6_k_l'
     and 'q4_k' of 'q4_k_m', so a contains-check answers a request for one
-    quantisation with a different one — several gigabytes of the wrong file,
+    quantisation with a different one - several gigabytes of the wrong file,
     with nothing failing until the model loads.
     """
     tag = re.escape(quant)
@@ -112,7 +112,7 @@ def resolve(ref):
     }
     unsplit, shards = _matching(siblings, quant)
 
-    # Repos routinely publish both packagings of identical weights — the
+    # Repos routinely publish both packagings of identical weights - the
     # default model has a 6.25GB file and the same bytes as two shards. One
     # file is one request, one checksum and no ordering to get wrong, so it
     # wins; the shard path exists for repos that publish nothing else.
@@ -131,8 +131,8 @@ def present(ref):
     running from.
 
     So the file name is matched instead. Every GGUF repo names its files after
-    itself — Qwen2.5-Coder-7B-Instruct-GGUF:Q6_K arrives as
-    qwen2.5-coder-7b-instruct-q6_k.gguf — and the quantisation is matched with
+    itself - Qwen2.5-Coder-7B-Instruct-GGUF:Q6_K arrives as
+    qwen2.5-coder-7b-instruct-q6_k.gguf - and the quantisation is matched with
     the same anchored test resolve uses, so a q4_k_m file is never mistaken
     for the q4_k somebody asked for.
 
@@ -237,7 +237,7 @@ def _download(file, path, label, before, total, say):
                 file.url,
                 partial,
                 lambda percent: say(
-                    f"Downloading {label} — "
+                    f"Downloading {label} - "
                     f"{(before + file.size * percent // 100) * 100 // total}% "
                     f"({_gb(before + file.size * percent // 100)} of {_gb(total)} GB)"
                 ),
@@ -254,7 +254,7 @@ def _download(file, path, label, before, total, say):
             wait = BACKOFF[min(attempt - 1, len(BACKOFF) - 1)]
             at = (before + _size(partial)) * 100 // total
             say(
-                f"Connection lost at {at}% — retrying in {wait}s "
+                f"Connection lost at {at}% - retrying in {wait}s "
                 f"(attempt {attempt + 1} of {ATTEMPTS})"
             )
             time.sleep(wait)
@@ -274,18 +274,18 @@ def _download(file, path, label, before, total, say):
                 f"{file.name} failed its checksum twice, so the copy being served is "
                 "damaged rather than merely interrupted. Try again later."
             )
-        # Once is most likely a resume that stitched the wrong bytes — a proxy
+        # Once is most likely a resume that stitched the wrong bytes - a proxy
         # answering a range request with something else. That is repairable by
         # starting clean; twice is not, and looping on gigabytes is not a fix.
         refetched = True
         attempt = 0
-        say("The download didn't match its checksum — fetching it again from the start.")
+        say("The download didn't match its checksum - fetching it again from the start.")
 
 
 def ensure(ref, label, on_status=None):
     """The path to hand `llama-server -m`, downloading the weights if needed.
 
-    Raises WeightsError when they can't be had — the caller turns that into
+    Raises WeightsError when they can't be had - the caller turns that into
     the message the user sees.
     """
     def say(message):

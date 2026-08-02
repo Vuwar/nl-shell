@@ -1,8 +1,8 @@
-"""ai_shell.llm — dates the model states that no result does.
+"""ai_shell.llm - dates the model states that no result does.
 
 Asked for Python's latest version the model answered "3.14.6, released on
-October 7, 2026". Every piece of that date is in the results — another
-release's day and month, a year from somewhere else — so nothing token-level
+October 7, 2026". Every piece of that date is in the results - another
+release's day and month, a year from somewhere else - so nothing token-level
 notices. Only the whole date is invented.
 """
 
@@ -31,8 +31,8 @@ class Parsing(unittest.TestCase):
 
     def test_run_together_table_cells(self):
         # Stripping tags out of a table runs its cells together. \b finds no
-        # boundary between "6" and "J", so python.org's release table — the
-        # page the original bug came from — parsed as having no dates at all,
+        # boundary between "6" and "J", so python.org's release table - the
+        # page the original bug came from - parsed as having no dates at all,
         # which would have made every correct date look invented.
         self.assertEqual(_dates("Python 3.14.6June 10, 2026"), {(6, 10, 2026)})
         self.assertEqual(_dates("3.14.0Oct. 7, 2025 Download"), {(10, 7, 2025)})
@@ -72,7 +72,7 @@ class Invented(unittest.TestCase):
         self.assertEqual(_invented_dates("Released 10 June 2026.", self.sources), [])
 
     def test_known_limit_a_real_date_on_the_wrong_subject_is_not_caught(self):
-        # October 7 2025 is real — it is 3.14.0's release date, not 3.14.6's.
+        # October 7 2025 is real - it is 3.14.0's release date, not 3.14.6's.
         # Checking the pairing was built and measured: matching a date against
         # the subject beside it got six of eight test answers wrong, passing
         # this very case while rejecting four answers that were correct. A

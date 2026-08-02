@@ -2,7 +2,7 @@
 
 A command the user edits before confirming is the one labelled example this
 app can produce about itself: this request, on this machine, should have
-produced this command. Nothing reads this file yet — it exists so that the
+produced this command. Nothing reads this file yet - it exists so that the
 examples are accumulating by the time something wants them.
 
 Append-only, local, and never sent anywhere. Records are written only when the
@@ -29,7 +29,7 @@ _MASK = "[redacted]"
 # --- scrubbing --------------------------------------------------------------
 # Best-effort, and deliberately so. The file never leaves the machine, so the
 # risk being managed is a user opening it and finding a password they pasted
-# into a curl six weeks ago — not an exfiltration path. Over-redacting costs
+# into a curl six weeks ago - not an exfiltration path. Over-redacting costs
 # one row of a dataset; under-redacting costs the thing people remember about
 # the app, so where the two conflict this leans on the first.
 
@@ -39,7 +39,7 @@ _FLAG_VALUE = re.compile(
     r"[=:\s]\s*)(\S+)"
 )
 
-# host=db user=me password=s3cr3t — inside a connection string, where the key
+# host=db user=me password=s3cr3t - inside a connection string, where the key
 # has no leading dash to recognise it by.
 _CONNECTION = re.compile(r"(?i)\b(password|pwd)(\s*=\s*)([^;\s'\"]+)")
 
@@ -51,7 +51,7 @@ _HEX = re.compile(r"\b[0-9a-fA-F]{32,}\b")
 
 # A long opaque token: letters and digits mixed, at least 20 characters, and
 # not touching a path separator or a dot on either side. Those exclusions are
-# what keeps `C:\Users\vuqar\Downloads\quarterly_report_2026.pdf` intact —
+# what keeps `C:\Users\vuqar\Downloads\quarterly_report_2026.pdf` intact -
 # every segment of a path is short, and the separators break the run.
 _TOKENISH = re.compile(
     r"(?<![\w./\\:-])"
@@ -64,7 +64,7 @@ _TOKENISH = re.compile(
 
 def redact(text):
     """`text` with anything that looks like a credential replaced by
-    "[redacted]". Best-effort — see the note above."""
+    "[redacted]". Best-effort - see the note above."""
     if not text:
         return text
     text = _FLAG_VALUE.sub(lambda m: m.group(1) + _MASK, text)
@@ -79,7 +79,7 @@ def record(request, suggested, corrected):
     """Append one correction, or do nothing at all.
 
     Both commands are stored as they were written, before
-    listing.resolve_listed_paths touches either — the model's command goes
+    listing.resolve_listed_paths touches either - the model's command goes
     through that helper too, so raw against raw is the honest comparison.
 
     Every failure here is swallowed. This runs on the way to executing a

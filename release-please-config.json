@@ -15,7 +15,7 @@
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
 
-      "//files": "pyproject.toml reads the version out of ai_shell/__init__.py, so that file is the only place it lives — and the only place that needs updating. The README deliberately isn't in here: a wheel filename ends '<version>-py3-none-any.whl', and the version matcher reads '0.1.0-py3' as a prerelease and swallows the py3 with it, turning the pip URL into a 404. The README asks the releases API for the current wheel instead.",
+      "//files": "pyproject.toml reads the version out of ai_shell/__init__.py, so that file is the only place it lives - and the only place that needs updating. The README deliberately isn't in here: a wheel filename ends '<version>-py3-none-any.whl', and the version matcher reads '0.1.0-py3' as a prerelease and swallows the py3 with it, turning the pip URL into a 404. The README asks the releases API for the current wheel instead.",
       "extra-files": [
         {
           "type": "generic",

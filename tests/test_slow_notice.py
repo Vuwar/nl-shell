@@ -1,4 +1,4 @@
-"""Session — telling the user why an answer took a minute.
+"""Session - telling the user why an answer took a minute.
 
 A startup check cannot see a game launched ten minutes later; this one can.
 Everything here is about not crying wolf: a card-less machine is slow by

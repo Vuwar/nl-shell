@@ -1,8 +1,8 @@
 """Talks to the local model: turns plain English into a command + risk classification.
 
 The reasoning rules below are the same everywhere; the shell they're written
-for isn't. Anything OS-shaped — the shell's name, how a listing is written,
-the worked examples, how an app is launched — comes from ai_shell.platforms,
+for isn't. Anything OS-shaped - the shell's name, how a listing is written,
+the worked examples, how an app is launched - comes from ai_shell.platforms,
 so the same rules produce PowerShell on Windows and bash elsewhere.
 """
 
@@ -30,7 +30,7 @@ The user will describe what they want in plain English. Your job:
 3. Not every message is a request. A greeting, a thank-you, or a question
    about you ("hey", "thanks", "who are you") is small talk: reply to it the
    way a person would in "explanation", with "command", "search" and "options"
-   all null. Never turn small talk into a task, and never offer choices for it —
+   all null. Never turn small talk into a task, and never offer choices for it -
    the user asked for nothing, so there is nothing to choose between. A real
    request that is unclear or doesn't map to a shell command likewise gets
    "command" null with your answer or clarification in "explanation".
@@ -38,7 +38,7 @@ The user will describe what they want in plain English. Your job:
    readable on its own. Never produce a bare true/false as the result.
    {current.LISTING_RULE}
 5. Messages beginning "(context from the shell, not the user)" are results
-   from commands that already ran — never answer them as if the user wrote
+   from commands that already ran - never answer them as if the user wrote
    them. They carry the real folder and the real names, so use them: a
    follow-up like "now zip that", "open the second one" or "delete it" refers
    to what those notes describe. Reuse the exact full paths they give instead
@@ -49,21 +49,21 @@ The user will describe what they want in plain English. Your job:
 6. Only act when you are sure what the user means. If the user asks for
    something and the request names a category or leaves the target open
    ("open a browser", "play some music", "delete the file") instead of a
-   specific app, file, or folder, do NOT pick one yourself — set "command" to
+   specific app, file, or folder, do NOT pick one yourself - set "command" to
    null, ask which one they mean in "explanation", and list the 2-4 most
    likely specific choices in "options". Ask only about what the user is
    actually asking for right now. The interface adds its own "Other" choice
    automatically, so never include one. Never silently substitute something
    you weren't asked for.
 7. You cannot see the internet, and what you were taught is out of date. When
-   the answer has to be looked up out there — news, prices, versions, sports
+   the answer has to be looked up out there - news, prices, versions, sports
    results, what something is, who someone is, finding a website or a channel
-   or a product — put a short search query in "search", leave "command" null,
+   or a product - put a short search query in "search", leave "command" null,
    and say in "explanation" that you're looking it up. The shell runs that
    search and reads the results back to the user, so this is a real thing you
    can do: never say you are unable to search, and never answer a
    looking-up question from memory. "search" is for the world beyond this
-   computer — questions about THIS machine's own files, settings or hardware
+   computer - questions about THIS machine's own files, settings or hardware
    are shell commands, not searches.
 """
 
@@ -75,10 +75,10 @@ shape:
 
 {
   "command": "the shell command, or null",
-  "search": "a short web search query — ONLY when the answer has to be looked up on the internet, otherwise null",
+  "search": "a short web search query - ONLY when the answer has to be looked up on the internet, otherwise null",
   "risk": "safe" or "risky" or null,
   "explanation": "one short sentence describing what this does, or your answer if command is null",
-  "options": ["2-4 likely specific choices — ONLY when asking which one the user means, otherwise null"]
+  "options": ["2-4 likely specific choices - ONLY when asking which one the user means, otherwise null"]
 }
 
 Never fill in more than one of "command", "search" and "options" at a time.
@@ -96,18 +96,18 @@ SYSTEM_PROMPT = _RULES + _SHAPE + current.EXAMPLES + "\n" + current.LAUNCH_NOTE 
 # being possible rather than becoming rarer.
 #
 # The shape is still described in the prompt above. The grammar constrains the
-# form, and says nothing about which field means what — a model that doesn't
+# form, and says nothing about which field means what - a model that doesn't
 # know what "risk" is for will emit a valid object full of nonsense.
 RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
-        # anyOf rather than "type": ["string", "null"] — both are legal JSON
+        # anyOf rather than "type": ["string", "null"] - both are legal JSON
         # Schema, but the union form isn't handled by every converter that
         # accepts the rest of this, and it buys nothing here.
         "command": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         # The shell does the looking-up; this is only the model saying what to
         # look up. A separate field rather than a made-up cmdlet because it is
-        # not a shell command and must never reach the shell — the grammar
+        # not a shell command and must never reach the shell - the grammar
         # keeps the two apart where a naming convention would only ask nicely.
         "search": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         "risk": {"enum": ["safe", "risky", None]},
@@ -122,7 +122,7 @@ RESPONSE_SCHEMA = {
     # Every key required, so a field is never simply missing: "no options" has
     # to be written as null, which is a thing the parsing side can tell apart
     # from the model having lost track of the shape. The 2-4 bound on options
-    # is the prompt's rule made structural — a lone choice isn't a question.
+    # is the prompt's rule made structural - a lone choice isn't a question.
     "required": ["command", "search", "risk", "explanation", "options"],
     "additionalProperties": False,
 }
@@ -154,7 +154,7 @@ def _complete(client, messages, max_tokens, schema=None, schema_name="response")
     Falls back to an unconstrained call when the server rejects the request
     outright, which is the difference between an old backend degrading to the
     salvage parsing below and the app simply not working on it. A transport
-    failure is not a rejection and is left to propagate — retrying a dead
+    failure is not a rejection and is left to propagate - retrying a dead
     connection without the schema would only fail twice and blame the wrong
     thing."""
     global _schema_supported
@@ -187,7 +187,7 @@ def _complete(client, messages, max_tokens, schema=None, schema_name="response")
 PICK_APPS_PROMPT = f"""You helped a {current.OS_NAME} AI shell ask the user a clarifying question
 about which application they meant. You are now given the list of
 applications actually installed on this computer (its {current.APP_SOURCE}).
-Pick the installed applications that fit what the user asked about — up to 4,
+Pick the installed applications that fit what the user asked about - up to 4,
 most likely first. Respond with ONLY a JSON object holding the names copied
 EXACTLY from the installed list, e.g. {{"apps": ["Opera GX", "Firefox"]}}. If
 nothing on the list fits, respond with {{"apps": []}}."""
@@ -243,9 +243,9 @@ The user asked for something and the action failed. Based on the error text,
 tell the user in ONE short plain sentence why it couldn't be done. Talk about
 the real-world cause, not the mechanics: never mention {current.JARGON}.
 Good examples:
-- "Couldn't open that browser — it doesn't seem to be installed on this computer."
-- "Couldn't create the folder — one with that name already exists."
-- "Couldn't delete the file — it's currently in use by another program."
+- "Couldn't open that browser - it doesn't seem to be installed on this computer."
+- "Couldn't create the folder - one with that name already exists."
+- "Couldn't delete the file - it's currently in use by another program."
 Respond with only that one sentence, nothing else."""
 
 
@@ -282,15 +282,15 @@ def explain_failure(client, user_input, command, error_text):
 # buried in it, and the array bounded rather than merely discouraged.
 #
 # Asking in words did not work. With the citation rules written out as
-# instructions — including an explicit "listing every result is the same as
-# citing none" — this model answered "Reykjavík is the capital of Iceland
+# instructions - including an explicit "listing every result is the same as
+# citing none" - this model answered "Reykjavík is the capital of Iceland
 # [1][2][3][4][5]", and cited nothing at all on another question. Temperature
 # is 0, so those were not unlucky samples; the wording simply had no purchase.
 #
 # maxItems is a different kind of thing from a rule: the server compiles this
 # schema to a grammar and decoding cannot leave it, so "at most two" holds
 # without the model's cooperation. minItems does the same for the answer that
-# cited nothing. Same trick as options in RESPONSE_SCHEMA — the prompt's rule
+# cited nothing. Same trick as options in RESPONSE_SCHEMA - the prompt's rule
 # made structural.
 WEB_ANSWER_SCHEMA = {
     "type": "object",
@@ -319,7 +319,7 @@ ONLY what the results say.
   another gives a date, don't attach that date to that version unless a result
   actually says so.
 - Not everything in a page is about the question. Take the part that answers it
-  and leave the rest — don't summarise the page.
+  and leave the rest - don't summarise the page.
 - If the results don't actually answer the question, say so plainly instead of
   guessing. "The results don't say" is a good answer; an invented one is not.
 - If the results disagree, say what each one claims rather than picking.
@@ -327,14 +327,14 @@ ONLY what the results say.
 
 "sources": the numbers of the results you actually took the answer from, best
 first. One is normal. Give a second only when the answer genuinely needed it.
-Not every result that happens to mention the subject — the number you would
+Not every result that happens to mention the subject - the number you would
 give someone who asked "where did you get that?"."""
 
 
 # What counts as a fact worth checking a source against: a run of digits, or a
 # capitalised word. Between them they cover the two things a factual answer is
-# actually made of — the numbers (8,848.86 metres, 1889, 28) and the names
-# (Reykjavík, Frank Herbert) — while ignoring the connective prose that every
+# actually made of - the numbers (8,848.86 metres, 1889, 28) and the names
+# (Reykjavík, Frank Herbert) - while ignoring the connective prose that every
 # page shares with every other and which therefore proves nothing.
 _NUMBER = re.compile(r"\d[\d,.]*")
 _NAME = re.compile(r"\b[^\W\d_][\w'’-]{3,}", re.UNICODE)
@@ -342,7 +342,7 @@ _NAME = re.compile(r"\b[^\W\d_][\w'’-]{3,}", re.UNICODE)
 
 # Dates get checked separately from every other figure, because they are the
 # one kind of fact this model assembles out of parts. Asked for Python's latest
-# version it answered "3.14.6, released on October 7, 2026" — a date that is
+# version it answered "3.14.6, released on October 7, 2026" - a date that is
 # nowhere in the results, built from another release's day and month and a year
 # taken from somewhere else again. Every piece of it appears in the sources, so
 # nothing token-level notices; only the whole date is invented.
@@ -357,7 +357,7 @@ _MONTH = "|".join(sorted(_MONTHS + _ABBR + ["sept"], key=len, reverse=True))
 # The boundaries are deliberately not \b, and this is the whole reason dates
 # from a release table were invisible. Stripping the tags out of a table runs
 # its cells together, so python.org's page reads "Python 3.14.6June 10, 2026"
-# — and \b finds no boundary between "6" and "J", both being word characters.
+# - and \b finds no boundary between "6" and "J", both being word characters.
 # The date the answer was supposed to be checked against therefore never
 # parsed, which would have made every correct answer look invented. Asking
 # instead that a month not be glued to *letters* keeps "Junction 10, 2026" out
@@ -374,8 +374,8 @@ def _dates(text):
     """Every complete date in `text`, as (month, day, year).
 
     Both sides of the comparison go through this, which is the whole point.
-    The obvious cheaper test — look for the day and the year somewhere near
-    the month name — was measured and is useless here: a release table packs
+    The obvious cheaper test - look for the day and the year somewhere near
+    the month name - was measured and is useless here: a release table packs
     dozens of dates into a few hundred characters, so almost any combination
     finds a match, and it waved through the very date that prompted this. It
     accepted 21 of 64 deliberately corrupted dates. Parsing the source the
@@ -398,7 +398,7 @@ def _invented_dates(answer, texts):
     """Dates the answer states that no result does, worst-first for reporting.
 
     Catches a date built out of nothing. It does NOT catch a real date bolted
-    onto the wrong subject — "3.14.6, released on October 7, 2025", where that
+    onto the wrong subject - "3.14.6, released on October 7, 2025", where that
     day genuinely is in the results as a different release's. Checking the
     pairing was tried and abandoned: matching a date against the subject next
     to it in the sentence got six of eight test answers wrong, and wrong in
@@ -445,7 +445,7 @@ def _claims(text):
 
 def _support(answer, texts):
     """How well each result backs up `answer`, as [(numbers, names)] in result
-    order — how many of the answer's figures it contains, and how many of its
+    order - how many of the answer's figures it contains, and how many of its
     names."""
     numbers, names = _claims(answer)
     scores = []
@@ -456,7 +456,7 @@ def _support(answer, texts):
 
 
 def _citations(sources, answer, texts):
-    """`sources` as the "[1][2]" a reader can act on — validated for shape, and
+    """`sources` as the "[1][2]" a reader can act on - validated for shape, and
     then checked against what the results actually say.
 
     Two separate problems, because the grammar only solves the first. A schema
@@ -466,7 +466,7 @@ def _citations(sources, answer, texts):
 
     The second problem is that a well-formed citation can still be false. Asked
     about the weather this model answered "around 28°C ... winds up to 38km/h"
-    and cited two pages whose text contains neither number — they were the
+    and cited two pages whose text contains neither number - they were the
     top-ranked results and they were about Baku, which is evidently enough to
     look right. So a pick is kept only if the result it names shares something
     checkable with the answer, and the empty slots are filled from the results
@@ -496,7 +496,7 @@ def _citations(sources, answer, texts):
         return "".join(f"[{number}]" for number in picked)
 
     # When the answer states figures and some result actually contains them,
-    # naming a result that doesn't is the failure this exists to catch — being
+    # naming a result that doesn't is the failure this exists to catch - being
     # about the right subject is not the same as being where the number came
     # from. With no figures in play, sharing names is the only evidence there
     # is and is enough.
@@ -525,11 +525,11 @@ def answer_from_search(client, question, results_block, texts):
     """One plain-English answer to `question`, read out of `results_block`,
     with the numbers of the results it came from appended.
 
-    `texts` is what each result actually said, in the order they're numbered —
+    `texts` is what each result actually said, in the order they're numbered -
     the same material the block was built from. It's what a citation is checked
     against, and its length is what makes a made-up result number obvious.
 
-    Returns None when the model can't be reached or says nothing — the caller
+    Returns None when the model can't be reached or says nothing - the caller
     then shows the results by themselves, which is a worse answer but never a
     wrong one.
 
@@ -544,7 +544,7 @@ def answer_from_search(client, question, results_block, texts):
     date named, and that works: on four planted fabrications the model dropped
     the invented date or replaced it with the real one every time. If the
     second attempt is still making dates up, this gives up and returns None
-    rather than choosing between two answers it has reason to distrust — the
+    rather than choosing between two answers it has reason to distrust - the
     sources go up without a summary, which is the same bargain the rest of
     this function makes.
     """
@@ -579,7 +579,7 @@ def answer_from_search(client, question, results_block, texts):
                 return None
 
     if not answer:
-        # No JSON in the reply, so the schema wasn't applied — an older
+        # No JSON in the reply, so the schema wasn't applied - an older
         # llama.cpp or an Ollama before 0.5, where _complete has already
         # fallen back to an unconstrained call. The prompt still asked for an
         # answer and the model still wrote one, so it's shown as it came:
@@ -596,8 +596,8 @@ def _one_answer(client, messages):
     """One round-trip, as (answer, sources, raw_reply, structured).
 
     `structured` says whether the reply actually parsed as the object asked
-    for. It's the difference between a server that ignored the schema — whose
-    prose is still worth showing — and one that obeyed it and returned an
+    for. It's the difference between a server that ignored the schema - whose
+    prose is still worth showing - and one that obeyed it and returned an
     empty answer, which is nothing to show at all. Returns None outright only
     when the model couldn't be reached.
     """
@@ -629,16 +629,16 @@ def _fallback_reason(error_text):
         line = line.strip()
         if line:
             return f"Couldn't do that: {current.strip_error_prefix(line)}"
-    return "Couldn't do that — it failed without giving a reason."
+    return "Couldn't do that - it failed without giving a reason."
 
 
 def ask_model(client, user_input, history):
-    """(data, rate) — the model's answer, and how fast it wrote it.
+    """(data, rate) - the model's answer, and how fast it wrote it.
 
     The rate is tokens a second, measured here rather than read out of
     llama.cpp's log: a user who pointed AI_SHELL_BASE_URL at Ollama or at their
     own server has no log of ours to read, and llama.cpp's format is its own
-    business and has changed. None whenever it can't be measured honestly — a
+    business and has changed. None whenever it can't be measured honestly - a
     backend that reports no usage, or a reply too short to time.
 
     Only this call is measured. The app's other model calls happen while the
@@ -661,7 +661,7 @@ def ask_model(client, user_input, history):
         return {
             "command": None,
             "risk": None,
-            "explanation": "Sorry — I got a garbled answer from the model. Try asking again, maybe with different wording.",
+            "explanation": "Sorry - I got a garbled answer from the model. Try asking again, maybe with different wording.",
         }, rate
     if isinstance(data.get("command"), str):
         data["command"] = _restore_path_escapes(data["command"])
@@ -672,7 +672,7 @@ def _rate(response, elapsed):
     """Tokens a second, or None when there's nothing honest to report.
 
     A short reply is dominated by the round-trip rather than the model, and a
-    backend that reports no usage gives nothing to divide — both are reasons
+    backend that reports no usage gives nothing to divide - both are reasons
     to say nothing rather than to publish a number that means something else.
     """
     usage = getattr(response, "usage", None)
@@ -688,7 +688,7 @@ def _rate(response, elapsed):
 # A grammar guarantees valid JSON, not the JSON that was meant, and this is
 # where the two come apart. Asked for C:\temp, an unconstrained model writes
 # "C:\temp" and the invalid escape breaks the parse loudly. A constrained one
-# cannot write that — but \t IS a legal escape, so the sampler is free to emit
+# cannot write that - but \t IS a legal escape, so the sampler is free to emit
 # it, and the parse then succeeds with a tab where the separator should be.
 # The failure stops being a garbled answer and becomes a command quietly
 # aimed at the wrong place, which is the worse of the two.
@@ -696,7 +696,7 @@ _SWALLOWED_ESCAPES = {"\t": r"\t", "\n": r"\n", "\r": r"\r", "\b": r"\b", "\f": 
 
 
 def _restore_path_escapes(command):
-    """Backslashes the JSON layer ate, put back — inside quotes only.
+    """Backslashes the JSON layer ate, put back - inside quotes only.
 
     Which is the whole difficulty: "C:\\temp\\notes" and a two-line script
     arrive as the same characters, and undoing all of them breaks every script
@@ -705,14 +705,14 @@ def _restore_path_escapes(command):
 
     Quoting separates them, because the two are never written in the same
     place. A path is an argument, and this shell's commands quote their
-    arguments — the platform's own quote() does, the worked examples in the
+    arguments - the platform's own quote() does, the worked examples in the
     prompt do. A script's line breaks are structure, and structure lives
     outside the quotes by definition: between statements, after a brace,
     around a pipeline. So a control character inside a quoted span was a path
     separator, and one outside it was a line the model meant to break.
 
     The remaining error is a deliberate literal tab or newline inside a quoted
-    string — Write-Output "a\\tb" — which comes back as the text \\t. Rare
+    string - Write-Output "a\\tb" - which comes back as the text \\t. Rare
     enough to trade for paths and scripts both working.
     """
     if not current.REPAIR_JSON_BACKSLASHES:
@@ -751,7 +751,7 @@ def _double_stray_backslashes(text):
     explicitly allows the model to write; guessing "escape" costs a tab, which
     _restore_path_escapes puts back afterwards. So the ambiguous ones are left
     to decode normally and repaired on the far side, and only escapes JSON
-    doesn't have — \\D, \\U, \\P — are treated as the literal backslashes they
+    doesn't have - \\D, \\U, \\P - are treated as the literal backslashes they
     can only have been."""
     return _STRAY_BACKSLASH.sub(lambda m: m.group(0) if len(m.group(0)) > 1 else "\\\\", text)
 

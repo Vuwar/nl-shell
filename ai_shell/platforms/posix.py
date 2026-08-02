@@ -1,7 +1,7 @@
 """What macOS and Linux share: bash, POSIX paths, `find` for listings.
 
-The one thing they don't share is applications — where they're installed and
-how you start one is completely different — so that stays in macos.py and
+The one thing they don't share is applications - where they're installed and
+how you start one is completely different - so that stays in macos.py and
 linux.py.
 """
 
@@ -18,7 +18,7 @@ _FIND_HEAD = re.compile(r"^\s*find\b")
 # the pipeline emitting something parse_listing can't read, and the rewrite is
 # abandoned in favour of the raw output.
 _SAFE_STAGE = re.compile(r"^\s*(sort|grep|egrep|fgrep|head|tail|uniq)\b")
-# Anything that could run a second command, redirect, or chain — a projected
+# Anything that could run a second command, redirect, or chain - a projected
 # listing is re-run, so it has to be nothing but a read.
 _UNSAFE = re.compile(r"[;&<>`]|\$\(")
 
@@ -47,7 +47,7 @@ class Posix(Platform):
     SHELL_NAME = "bash"
 
     NAME_PARAM = re.compile(r"-i?name\s*$")
-    # A path starting at the root or the home directory, quoted or bare —
+    # A path starting at the root or the home directory, quoted or bare -
     # bash doesn't need the quotes, so the model often leaves them off.
     ABS_PATH = re.compile(
         r"""['"]((?:~|\$HOME)?/[^'"]*)['"]|(?:^|\s)((?:~|\$HOME)?/[^\s'"|;&<>]+)"""
@@ -56,8 +56,8 @@ class Posix(Platform):
     LISTING_RULE = (
         "Answer yes/no questions about files or folders by listing the things "
         "that match,\n   and always list a folder's contents with `find "
-        "<folder> -maxdepth 1 -mindepth 1`\n   — adding `-type d`, `-type f` "
-        "or `-name '<pattern>'` to narrow it — so an\n   empty result means "
+        "<folder> -maxdepth 1 -mindepth 1`\n   - adding `-type d`, `-type f` "
+        "or `-name '<pattern>'` to narrow it - so an\n   empty result means "
         "\"no\" and a non-empty one shows what was found. Add\n   `! -name "
         "'.*'` to leave out hidden files unless the user asks for them.\n   "
         "Never use `ls` for this, and never test each item in a loop into a\n"
@@ -103,7 +103,7 @@ class Posix(Platform):
         try:
             return input(prompt)
         except (EOFError, KeyboardInterrupt):
-            # Both mean "not this one" — an empty line, which the caller reads
+            # Both mean "not this one" - an empty line, which the caller reads
             # as a cancellation.
             print()
             return ""
@@ -118,7 +118,7 @@ class Posix(Platform):
 
     def project_listing(self, command):
         """`find` already prints one full path per line, so a listing needs no
-        rewriting — it only needs checking, since the session re-runs whatever
+        rewriting - it only needs checking, since the session re-runs whatever
         comes back."""
         if _UNSAFE.search(command):
             return None
@@ -156,7 +156,7 @@ class Posix(Platform):
             if not path:
                 continue
             # find prints paths as it was given them, so `find . -maxdepth 1`
-            # yields relative ones — which would resolve against this process's
+            # yields relative ones - which would resolve against this process's
             # directory rather than the folder the command ran in.
             if not os.path.isabs(path):
                 path = os.path.normpath(os.path.join(cwd or os.getcwd(), path))

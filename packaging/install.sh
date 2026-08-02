@@ -13,7 +13,7 @@
 #     AI_SHELL_VERSION=0.1.0   install a specific release instead of the latest
 #     AI_SHELL_PREFIX=~/apps   Linux only: where to put it
 #
-# What this does NOT download is the model — several gigabytes that the app
+# What this does NOT download is the model - several gigabytes that the app
 # fetches into its own config folder the first time you run it, so that
 # reinstalling the app doesn't mean downloading the weights again.
 
@@ -120,7 +120,7 @@ else
   case ":${PATH}:" in
     *":${bindir}:"*) ;;
     *) say ""
-       say "${bindir} isn't on your PATH — add this to your shell profile:"
+       say "${bindir} isn't on your PATH - add this to your shell profile:"
        say "    export PATH=\"\$PATH:${bindir}\"" ;;
   esac
 

@@ -1,8 +1,8 @@
-"""Platform.prefill_input — asking for a line that already has something in it.
+"""Platform.prefill_input - asking for a line that already has something in it.
 
 The prefilled paths can't be exercised here: a test run has redirected stdin
 and no console to inject keystrokes into. What is tested is the contract the
-CLI depends on — that "can't do that here" is reported as None and is
+CLI depends on - that "can't do that here" is reported as None and is
 distinguishable from an empty answer.
 """
 

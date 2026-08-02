@@ -118,11 +118,11 @@ function playKey(kind) {
     osc.start(t);
     osc.stop(t + spec.dur);
   } catch {
-    // audio is a garnish — never let it break input handling
+    // audio is a garnish - never let it break input handling
   }
 }
 
-// Must match WINDOW_WIDTH and MINI_SIZE in gui/app.py — the window is sized
+// Must match WINDOW_WIDTH and MINI_SIZE in gui/app.py - the window is sized
 // from here, so these are the two shapes it can have.
 const PANEL_WIDTH = 560;
 const MINI_SIZE = 48;
@@ -145,7 +145,7 @@ const reduceMotion = () =>
 //
 // The observed element is the panel BODY, not the panel: the body is pinned to
 // PANEL_WIDTH whatever the window is doing, so its height stays meaningful
-// while the window is halfway through a fold — that measurement is what the
+// while the window is halfway through a fold - that measurement is what the
 // unfold animates back to. Measuring anything window-width would instead
 // report the height of the content reflowed into a 48px column.
 function useWindowGeometry(bodyRef, ready, mini) {
@@ -187,7 +187,7 @@ function useWindowGeometry(bodyRef, ready, mini) {
 
     const ro = new ResizeObserver((entriesList) => {
       contentRef.current = measure(entriesList[0].target);
-      // Collapsed, the window's size is the tile's, not the content's — the
+      // Collapsed, the window's size is the tile's, not the content's - the
       // new height is only recorded, to be unfolded to later.
       if (!miniRef.current) animate(reduceMotion() ? 0 : GROW_MS);
     });
@@ -217,18 +217,18 @@ const COMMANDS = [
 const HINTS = [
   { text: "Ask for anything in plain English" },
   { key: "exit", text: "on its own closes the window" },
-  { key: "/", text: "opens the commands — /settings, /clear" },
+  { key: "/", text: "opens the commands - /settings, /clear" },
   { key: "Esc", text: "clears the screen when you're done" },
   { key: "↑ ↓", text: "step back through what you've asked" },
   { key: "Tab", text: "fills in the highlighted command" },
-  { key: "Enter", text: "sends it — no need to know the command" },
+  { key: "Enter", text: "sends it - no need to know the command" },
   { text: "Anything destructive asks you first" },
-  { text: "Ask a follow-up — it remembers the conversation" },
+  { text: "Ask a follow-up - it remembers the conversation" },
   { key: "/settings", text: "has typing sounds, volume and which model runs" },
   // Precise on purpose: the model really is local, and a web search really
   // does send the query out. Overstating the first would make a liar of the
   // app the first time somebody asks it to look something up.
-  { text: "Runs on a local model — only web searches leave this PC" },
+  { text: "Runs on a local model - only web searches leave this PC" },
   { text: "Ask about the world and it looks it up on the web" },
   { text: "Click a folder in a listing to open it" },
   { text: "Click a file in a listing to open it with Windows" },
@@ -236,7 +236,7 @@ const HINTS = [
   { text: "“Show detailed” adds size, type and date" },
   { text: "Copy buttons put any output on the clipboard" },
   { text: "Drag anywhere on the panel to move the window" },
-  { text: "Click away and it shrinks — click the tile to bring it back" },
+  { text: "Click away and it shrinks - click the tile to bring it back" },
   { text: "Not sure? Ask “what's taking up my disk space”" },
   { text: "When it asks something, click an answer or type your own" },
   { text: "The dot on the left shows what it's doing" },
@@ -303,7 +303,7 @@ function useRotatingHint(paused) {
 
 // pywebview's easy_drag makes a mousedown anywhere in the window start moving
 // it, which is what a frameless panel wants everywhere except on a control
-// that has its own idea of what dragging means — a slider, a scrollbar, a
+// that has its own idea of what dragging means - a slider, a scrollbar, a
 // selectable block of text. It listens on `window`, and React hands us the
 // native event on its way there, so stopping it here is enough to keep the
 // two from fighting over the same gesture.
@@ -327,7 +327,7 @@ function ConfirmRow({ command, onDecide }) {
 
   function submitEdit() {
     const text = draft.trim();
-    // An empty edit cancels rather than running an empty command — the same
+    // An empty edit cancels rather than running an empty command - the same
     // rule the console REPL follows.
     onDecide(text ? { proceed: true, command: text } : { proceed: false, command: null });
   }
@@ -401,7 +401,7 @@ async function writeClipboard(text) {
       return true;
     }
   } catch {
-    // blocked or unavailable — the execCommand path below still works
+    // blocked or unavailable - the execCommand path below still works
   }
   try {
     const scratch = document.createElement("textarea");
@@ -446,7 +446,7 @@ function CopyButton({ text, floating }) {
   );
 }
 
-// .lnk/.url files are shortcuts — the extension is plumbing, so it's dropped
+// .lnk/.url files are shortcuts - the extension is plumbing, so it's dropped
 // from the displayed name and surfaced as a "Shortcut" type instead.
 const SHORTCUT_EXT = /\.(lnk|url)$/i;
 const SIZE_UNITS = ["KB", "MB", "GB", "TB", "PB"];
@@ -487,7 +487,7 @@ function formatModified(iso) {
 function listingToText(path, items, detailed) {
   const rows = items.map((item) => ({
     name: item.dir ? item.name : item.name.replace(SHORTCUT_EXT, ""),
-    size: item.dir ? "—" : formatSize(item.size),
+    size: item.dir ? "-" : formatSize(item.size),
     kind: fileKind(item),
     date: formatModified(item.modified),
   }));
@@ -517,7 +517,7 @@ function Crumbs({ path, onGo, disabled }) {
   const parts = rooted ? ["/", ...segments] : segments;
   const targetOf = (i) => {
     if (rooted) return i === 0 ? "/" : "/" + parts.slice(1, i + 1).join("/");
-    // The drive needs its trailing slash — "C:" alone means something else
+    // The drive needs its trailing slash - "C:" alone means something else
     // to PowerShell (the current directory on that drive).
     return i === 0 ? `${parts[0]}\\` : parts.slice(0, i + 1).join("\\");
   };
@@ -596,7 +596,7 @@ function Listing({ path, items, kind, busy }) {
     <div className={`entry listing${loading ? " loading" : ""}`}>
       {here && <Crumbs path={here} onGo={go} disabled={locked} />}
       {rows.length === 0 ? (
-        // Still inside the frame, so the breadcrumbs above remain — an empty
+        // Still inside the frame, so the breadcrumbs above remain - an empty
         // folder must not be a dead end.
         <div className="listing-empty">
           {rowKind === "item" ? "Nothing there." : `No ${rowKind}s there.`}
@@ -615,7 +615,7 @@ function Listing({ path, items, kind, busy }) {
               <span className={`listing-name${item.dir ? " dir" : ""}`}>
                 {item.dir ? item.name : item.name.replace(SHORTCUT_EXT, "")}
               </span>
-              {/* A folder's size slot carries the chevron instead — it says
+              {/* A folder's size slot carries the chevron instead - it says
                   "this one goes somewhere" where a size would say nothing. */}
               <span className="listing-size">
                 {item.dir ? <span className="listing-chevron">›</span> : formatSize(item.size)}
@@ -643,7 +643,7 @@ function Listing({ path, items, kind, busy }) {
   );
 }
 
-// A web answer as text, for the copy button — the answer plus the numbered
+// A web answer as text, for the copy button - the answer plus the numbered
 // sources, so what leaves the window still says where it came from. The read
 // marks come too: pasted somewhere else, they're what says which of these the
 // answer was actually drawn out of.
@@ -680,7 +680,7 @@ function WebAnswer({ answer, sources, caveat, busy }) {
 
   return (
     <div className="entry answer">
-      {/* Selectable like command output is — an answer people will want to
+      {/* Selectable like command output is - an answer people will want to
           quote out of, not just read. */}
       {answer && (
         <div className="answer-text" onMouseDown={keepGesture}>
@@ -801,7 +801,7 @@ function Entry({ entry, onConfirm, onChoose, onRetry, busy }) {
       return <div className="entry system-line">Skipped.</div>;
     case "notice":
       // Why that took so long. Said once a session, and never urgent enough
-      // to be dismissable — it goes away with everything else on /clear.
+      // to be dismissable - it goes away with everything else on /clear.
       return <div className="entry entry-notice">{entry.text}</div>;
     case "output":
       return (
@@ -816,7 +816,7 @@ function Entry({ entry, onConfirm, onChoose, onRetry, busy }) {
       );
     case "listing":
       // entry.kind is the entry type ("listing"); kindLabel is what the rows
-      // are — "folder", "file" or "item".
+      // are - "folder", "file" or "item".
       return (
         <Listing path={entry.path} items={entry.items} kind={entry.kindLabel} busy={busy} />
       );
@@ -856,7 +856,7 @@ export default function App() {
   // What the model server is doing while it starts, or null once it's up.
   const [booting, setBooting] = useState(null);
   // The version waiting to be installed, once one has finished downloading.
-  // Null until then — a check nobody asked for shouldn't be visible while
+  // Null until then - a check nobody asked for shouldn't be visible while
   // it's happening, only when it has something to offer.
   const [updateReady, setUpdateReady] = useState(null);
   const [updating, setUpdating] = useState(false);
@@ -865,7 +865,7 @@ export default function App() {
   const [minimized, setMinimized] = useState(false);
   const [clearing, setClearing] = useState(false);
   // Where the tile was pressed, whether that press is holding it folded, and
-  // whether it is folded right now — all read from callbacks that must not be
+  // whether it is folded right now - all read from callbacks that must not be
   // rebuilt every time one of them changes.
   const pressAt = useRef(null);
   const holdFolded = useRef(false);
@@ -893,7 +893,7 @@ export default function App() {
 
   useEffect(() => setSelIdx(0), [value]);
 
-  // Hints only rotate on an idle, empty, visible input — never while you're
+  // Hints only rotate on an idle, empty, visible input - never while you're
   // typing into it, reading a result, or looking at the collapsed tile.
   const { hint, shown: hintShown, advance: nextHint } = useRotatingHint(
     view !== "shell" || value !== "" || busy || entries.length > 0 || minimized
@@ -1012,7 +1012,7 @@ export default function App() {
         // and the focus event beats the mousedown to the page, so opening
         // here immediately would open the panel before it could be told the
         // press was somebody picking the tile up to move it. This is the
-        // moment that press gets to say so (see onTilePress) — and it's
+        // moment that press gets to say so (see onTilePress) - and it's
         // short enough that returning by Alt-Tab still feels instant.
         openTimer = setTimeout(() => {
           openTimer = null;
@@ -1035,13 +1035,13 @@ export default function App() {
     // is the web view's, and it drifts from the window's (observed: another
     // app takes the foreground and no blur ever arrives, leaving the panel
     // open over someone else's work). So the state is reconciled against the
-    // window the OS actually has in front — the events just get there sooner.
+    // window the OS actually has in front - the events just get there sooner.
     const check = async () => {
       let active;
       try {
         active = await window.pywebview.api.window_focused();
       } catch {
-        return; // window closing — nothing left to fold
+        return; // window closing - nothing left to fold
       }
       sync(active === null ? document.hasFocus() : active);
     };
@@ -1076,14 +1076,14 @@ export default function App() {
     return () => cancelAnimationFrame(id);
   }, [minimized]);
 
-  // Pressing the tile has two meanings — open it, or pick it up and move it
-  // somewhere — and they start identically. So a press holds the fold shut
+  // Pressing the tile has two meanings - open it, or pick it up and move it
+  // somewhere - and they start identically. So a press holds the fold shut
   // and only a release that didn't travel counts as opening it.
   //
   // The hold is what makes dragging work at all: moving the window means
   // clicking it, clicking it hands it focus, and focus is otherwise exactly
   // what opens the panel. Screen coordinates, not client ones, because the
-  // window is moving with the pointer — relative to it, nothing travels.
+  // window is moving with the pointer - relative to it, nothing travels.
   function onTilePress(e) {
     pressAt.current = { x: e.screenX, y: e.screenY };
     holdFolded.current = true;
@@ -1094,7 +1094,7 @@ export default function App() {
     pressAt.current = null;
     const travelled =
       from && Math.max(Math.abs(e.screenX - from.x), Math.abs(e.screenY - from.y)) > DRAG_SLOP;
-    if (travelled) return; // a move, not an open — the hold stays on
+    if (travelled) return; // a move, not an open - the hold stays on
     holdFolded.current = false;
     setMinimized(false);
   }
@@ -1111,7 +1111,7 @@ export default function App() {
   // on a line of text costs nothing next to what it's waiting for.
   // `stopped` is the window closing; `running` stops a Retry click starting a
   // second poll alongside the first. Both live in a ref because the watcher
-  // outlives the render that started it — it is restarted by the Retry button
+  // outlives the render that started it - it is restarted by the Retry button
   // as well as by the effect below.
   const startupWatch = useRef({ stopped: false, running: false });
 
@@ -1125,7 +1125,7 @@ export default function App() {
         try {
           state = await window.pywebview.api.startup_status();
         } catch {
-          return; // window closing — nothing left to report to
+          return; // window closing - nothing left to report to
         }
         if (watch.stopped) return;
         if (state.state === "starting") {
@@ -1145,7 +1145,7 @@ export default function App() {
         if (state.notice) {
           addEntry({ kind: "notice", text: `${state.notice} Open /settings to switch model.` });
         }
-        // Ready — confirm it can actually be talked to, which is a different
+        // Ready - confirm it can actually be talked to, which is a different
         // question from whether the process started.
         const res = await window.pywebview.api.check_connection();
         if (!res.ok && !watch.stopped) {
@@ -1189,8 +1189,8 @@ export default function App() {
   }
 
   // The other thing happening in the background at startup: a look for a
-  // newer version of the app. Nothing is shown while it checks or downloads —
-  // an update the user can't act on yet is noise — so this watches for the
+  // newer version of the app. Nothing is shown while it checks or downloads -
+  // an update the user can't act on yet is noise - so this watches for the
   // one state that has anything to say, and then stops watching.
   useEffect(() => {
     if (!ready) return;
@@ -1250,7 +1250,7 @@ export default function App() {
     return entry.id;
   }
 
-  // A startup failure is reported by two different paths — the watcher below,
+  // A startup failure is reported by two different paths - the watcher below,
   // and a request that was held while the server started and has to be
   // answered somehow. Both are right; only the display was duplicated. Giving
   // the entry a stable key makes the second report replace the first.
@@ -1285,7 +1285,7 @@ export default function App() {
       prev.map((e) => (e.id === id ? { ...e, answered: true, chosen: option } : e))
     );
     if (option === null) {
-      // "Other" — let the user type what they actually want.
+      // "Other" - let the user type what they actually want.
       inputRef.current?.focus();
       return;
     }
@@ -1314,7 +1314,7 @@ export default function App() {
       idx += step;
     }
     if (idx >= list.length) {
-      // Past the newest entry — back to whatever was being typed.
+      // Past the newest entry - back to whatever was being typed.
       recallIdx.current = null;
       setValue(draft.current);
     } else {
@@ -1334,7 +1334,7 @@ export default function App() {
     const text = value.trim();
     if (!text || busy) return;
     remember(text);
-    // Bare "exit" closes the window. Exact match only — "exit window" or
+    // Bare "exit" closes the window. Exact match only - "exit window" or
     // "exit vim" are real requests and still go to the model.
     if (text.toLowerCase() === "exit") {
       setValue("");
@@ -1361,7 +1361,7 @@ export default function App() {
   // as if the user had typed it (the session's history makes it a follow-up
   // answer to the model's question).
   async function runRequest(text) {
-    // The box is about to be empty again — show something new in it rather
+    // The box is about to be empty again - show something new in it rather
     // than the hint that was already sitting there while they typed.
     nextHint();
     addEntry({ kind: "user", text });
@@ -1410,7 +1410,7 @@ export default function App() {
       }
 
       // Keep the dots up while the command (and, on failure, the model's
-      // explanation of why) runs — both can take a few seconds.
+      // explanation of why) runs - both can take a few seconds.
       const runningId = addEntry({ kind: "thinking" });
       const result = await window.pywebview.api.confirm(edited);
       setEntries((prev) => prev.filter((e) => e.id !== runningId));
@@ -1499,7 +1499,7 @@ export default function App() {
   }
 
   // A press on the output's scrollbar targets the scrolling element itself and
-  // lands past its content width — that gesture belongs to the scrollbar, not
+  // lands past its content width - that gesture belongs to the scrollbar, not
   // to the window. Anywhere else in the output still drags the panel.
   function onOutputPress(e) {
     if (e.target === e.currentTarget && e.nativeEvent.offsetX > e.currentTarget.clientWidth) {
@@ -1526,8 +1526,8 @@ export default function App() {
       >
         <div className="panel-sheen" />
         {/* Kept mounted while collapsed rather than swapped out: everything on
-            screen — the conversation, a listing browsed three folders deep, a
-            half-typed line — has to be exactly where it was when the tile is
+            screen - the conversation, a listing browsed three folders deep, a
+            half-typed line - has to be exactly where it was when the tile is
             opened again. It is only moved out of the layout and faded. */}
         <div className="panel-body" ref={bodyRef} aria-hidden={minimized}>
           {view === "settings" ? (
@@ -1603,7 +1603,7 @@ export default function App() {
                         costs, and whether this machine runs it slower. A
                         downloaded model is a free switch even where it
                         doesn't fit, and one that doesn't fit is no longer
-                        unusable — as much of it as fits goes on the card. */}
+                        unusable - as much of it as fits goes on the card. */}
                     <span className="model-meta">
                       {m.current
                         ? "in use"
@@ -1677,7 +1677,7 @@ export default function App() {
           {/* A new version is already downloaded and waiting. It is never
               applied without this click: the app closes, swaps itself out and
               comes back, which is not something to do to someone mid-thought.
-              Nothing here is dismissable because nothing here is urgent — the
+              Nothing here is dismissable because nothing here is urgent - the
               row goes away by being acted on, or by closing the app. */}
           {updateReady && (
             <div className="update-row">
@@ -1746,7 +1746,7 @@ export default function App() {
           className="mini-orb"
           tabIndex={minimized ? 0 : -1}
           aria-hidden={!minimized}
-          title="Open — or drag to move it"
+          title="Open - or drag to move it"
           onMouseDown={onTilePress}
           onClick={onTileRelease}
         >
@@ -1756,7 +1756,7 @@ export default function App() {
             <>
               {/* Drawn rather than typed: the panel's "›" is a mono glyph, and
                   a glyph is centred by its advance box and its font's idea of
-                  where a quotation mark sits — neither of which is the middle
+                  where a quotation mark sits - neither of which is the middle
                   of a 48px tile. A path is exactly where it says it is. */}
               <svg className="mini-mark" viewBox="0 0 24 24" aria-hidden="true">
                 <defs>

@@ -8,7 +8,7 @@ model is a choice made per machine, out of the list below.
 
 Two rules shape that list.
 
-One family, several sizes. The system prompt in ai_shell.llm is tuned — it
+One family, several sizes. The system prompt in ai_shell.llm is tuned - it
 asks for a strict JSON shape, and it leans on the model following a fair
 number of rules at once. Model families differ enormously in how reliably they
 do that, so swapping in a different family is a change that has to be tested
@@ -17,7 +17,7 @@ behave consistently enough to be offered as a slider.
 
 Repos, not paths. Each entry is a HuggingFace reference that llama-server's
 `-hf` flag resolves and caches itself, so choosing a bigger model is a config
-change rather than an errand — no download page, no file to put somewhere, no
+change rather than an errand - no download page, no file to put somewhere, no
 path to get wrong.
 """
 
@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from ai_shell import fit
 
 # Room the model needs beyond its own weights: the KV cache for the context
-# window plus llama.cpp's compute buffers. Same multiplier wherever it runs —
+# window plus llama.cpp's compute buffers. Same multiplier wherever it runs -
 # those buffers don't care whether they're in VRAM or RAM.
 _OVERHEAD = 1.25
 
@@ -47,7 +47,7 @@ class Model:
     weights_gb: float  # the GGUF's size on disk
     # Transformer blocks, and what one token of context costs in key/value
     # cache. Both are needed to answer "how much of this fits on the card",
-    # which is a question with a per-layer answer rather than a yes or no —
+    # which is a question with a per-layer answer rather than a yes or no -
     # see ai_shell.fit.gpu_layers.
     #
     # From each model's config: kv = 2 (K and V) x 2 bytes (f16) x n_kv_heads
@@ -76,22 +76,22 @@ def usable_ram_gb(ram_gb):
     return ram_gb - max(_RESERVE_FLOOR_GB, ram_gb * _RESERVE_FRACTION)
 
 
-# Smallest first — recommend() walks this backwards to find the largest fit.
+# Smallest first - recommend() walks this backwards to find the largest fit.
 MODELS = (
     # 1.5B is the floor, not a recommendation: it holds the JSON shape but
     # drops rules from the prompt, so vague requests get guessed at instead of
     # asked about. Offered because a wrong answer beats an app that won't run.
-    Model("qwen2.5-coder-1.5b-q4", "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF:Q4_K_M", "1.5B — minimum", 1.1,
+    Model("qwen2.5-coder-1.5b-q4", "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF:Q4_K_M", "1.5B - minimum", 1.1,
           layers=28, kv_bytes_per_token=28672),
-    Model("qwen2.5-coder-3b-q4", "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF:Q4_K_M", "3B — light", 2.0,
+    Model("qwen2.5-coder-3b-q4", "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF:Q4_K_M", "3B - light", 2.0,
           layers=36, kv_bytes_per_token=36864),
-    Model("qwen2.5-coder-7b-q4", "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M", "7B — balanced", 4.7,
+    Model("qwen2.5-coder-7b-q4", "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M", "7B - balanced", 4.7,
           layers=28, kv_bytes_per_token=57344),
-    Model("qwen2.5-coder-7b-q6", "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q6_K", "7B — higher quality", 6.3,
+    Model("qwen2.5-coder-7b-q6", "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q6_K", "7B - higher quality", 6.3,
           layers=28, kv_bytes_per_token=57344),
-    Model("qwen2.5-coder-14b-q4", "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M", "14B — strong", 9.0,
+    Model("qwen2.5-coder-14b-q4", "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M", "14B - strong", 9.0,
           layers=48, kv_bytes_per_token=196608),
-    Model("qwen2.5-coder-32b-q4", "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF:Q4_K_M", "32B — best", 19.9,
+    Model("qwen2.5-coder-32b-q4", "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF:Q4_K_M", "32B - best", 19.9,
           layers=64, kv_bytes_per_token=262144),
 )
 
@@ -106,7 +106,7 @@ _POOR_FIT_RATIO = 1.5
 # machine falls back to: the largest size an ordinary 16GB laptop handles.
 FALLBACK = _BY_ID["qwen2.5-coder-7b-q4"]
 
-# Nothing smaller is worth choosing *on purpose* — below this the shell stops
+# Nothing smaller is worth choosing *on purpose* - below this the shell stops
 # asking clarifying questions and starts inventing commands. It's still an
 # option for a machine that can't hold anything else (see recommend).
 _FLOOR = _BY_ID["qwen2.5-coder-3b-q4"]
@@ -114,7 +114,7 @@ _FLOOR = _BY_ID["qwen2.5-coder-3b-q4"]
 # The smallest model whose reading of a page of web results is worth printing
 # above the sources. Translating a request into a command is a narrow job with
 # a grammar holding the shape steady; summarising five snippets into a true
-# sentence is not, and it's the job where a small model fails invisibly — the
+# sentence is not, and it's the job where a small model fails invisibly - the
 # answer reads perfectly and says something the sources never did. So the floor
 # for that one job is higher than the floor for running the shell at all, and
 # below it the app says so rather than pretending otherwise.
@@ -124,7 +124,7 @@ _SUMMARY_FLOOR = _BY_ID["qwen2.5-coder-7b-q4"]
 # there is. Fitting is not the same as being usable: CPU inference is bound by
 # memory bandwidth, so a 14B answers at a couple of tokens a second and a 32B
 # at well under one. A workstation with 64GB and no GPU can hold the 32B
-# comfortably and would take minutes per reply — which for a shell prompt is
+# comfortably and would take minutes per reply - which for a shell prompt is
 # the same as not working. Capping keeps the CPU path merely slow.
 _CPU_CEILING = _BY_ID["qwen2.5-coder-7b-q4"]
 
@@ -161,17 +161,17 @@ def recommend(ram_gb, vram_gb, shared=False):
     The GPU's budget is what fit.usable_vram_gb leaves after the desktop, not
     the card's total. Sizing against the total is what put a 7.875GB model on
     an 8GB card that had 5.5GB of browser on it already, and a model that
-    doesn't fit is not merely a worse choice — it is several times slower than
+    doesn't fit is not merely a worse choice - it is several times slower than
     the CPU it was chosen over.
 
     A GPU too small to hold even the floor model is the interesting case, and
-    it isn't rare — plenty of laptops pair 32GB of RAM with a 2GB display
+    it isn't rare - plenty of laptops pair 32GB of RAM with a 2GB display
     adapter. Taking the GPU's answer there would hand a machine that could run
     14B the weakest model on the list, so a card that small is ignored and the
     size comes from RAM instead.
 
     Either number may be None. Both None is an unreadable machine, which gets
-    FALLBACK — the behaviour this project had before it could measure
+    FALLBACK - the behaviour this project had before it could measure
     anything. A machine that measured but is smaller than everything on the
     list gets the smallest: too weak to be a good experience, but the entry
     exists precisely so that such a machine gets a working app rather than
@@ -196,7 +196,7 @@ def catalog(vram_gb, ram_gb, shared=False, installed=(), current_id=None):
     is in use.
 
     "Fits" is the same question recommend answers, asked per row rather than
-    resolved to a winner — the card's budget where there is a card worth using,
+    resolved to a winner - the card's budget where there is a card worth using,
     RAM under the CPU ceiling where there isn't. A machine with no GPU is not
     offered a 32B it would take minutes per reply to run.
 

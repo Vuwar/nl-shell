@@ -1,6 +1,6 @@
 """Tests for ai_shell.
 
-Standard library unittest, no test framework and no new dependencies — the
+Standard library unittest, no test framework and no new dependencies - the
 requirements file is two packages and running the tests shouldn't make it
 three.
 

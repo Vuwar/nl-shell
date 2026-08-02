@@ -1,4 +1,4 @@
-"""ai_shell.web — turning a fetched page into text worth giving the model."""
+"""ai_shell.web - turning a fetched page into text worth giving the model."""
 
 import gzip
 import random
@@ -126,7 +126,7 @@ class IsText(unittest.TestCase):
 
     def test_rejects_mojibake(self):
         # Seeded rather than os.urandom so a failure here is reproducible, and
-        # incompressible so the gzip blob is the size a real page's would be —
+        # incompressible so the gzip blob is the size a real page's would be -
         # repetitive bytes pack down to a few hundred characters and wouldn't
         # clear _MIN_TEXT on their own, which is the whole point being made.
         noise = random.Random(1).randbytes(30_000)
@@ -138,7 +138,7 @@ class IsText(unittest.TestCase):
         self.assertTrue(web._is_text("Iceland is a Nordic island country. " * 20))
 
     def test_accepts_accented_prose(self):
-        self.assertTrue(web._is_text("Reykjavík is the capital. " * 20 + "café naïve — é"))
+        self.assertTrue(web._is_text("Reykjavík is the capital. " * 20 + "café naïve - é"))
 
     def test_tolerates_a_stray_replacement_character(self):
         self.assertTrue(web._is_text("A perfectly fine sentence about things. " * 20 + "�"))

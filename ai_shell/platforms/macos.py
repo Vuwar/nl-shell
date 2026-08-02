@@ -24,47 +24,47 @@ class MacOS(Posix):
     APP_SOURCE = "Applications folder"
     JARGON = "bash, the shell, commands, flags, exit codes, or syntax"
 
-    EXAMPLES = r"""Example — risky request:
+    EXAMPLES = r"""Example - risky request:
 User: delete the file called old_notes.txt
 {"command": "rm 'old_notes.txt'", "risk": "risky", "explanation": "Permanently deletes old_notes.txt."}
 
-Example — opening/launching a specific, named application:
+Example - opening/launching a specific, named application:
 User: open safari
 {"command": "open -a 'Safari'", "risk": "safe", "explanation": "Launches Safari."}
 
-Example — yes/no question about files (list the matches, don't test each item):
+Example - yes/no question about files (list the matches, don't test each item):
 User: is there any folder on the desktop
 {"command": "find \"$HOME/Desktop\" -maxdepth 1 -mindepth 1 -type d ! -name '.*'", "risk": "safe", "explanation": "Lists the folders on your desktop."}
 
-Example — follow-up referring to an earlier result (reuse the path from the note):
-Note: (context from the shell, not the user) Ran: find '/Users/me/Desktop/Photos' -maxdepth 1 -mindepth 1 — Listed 12 items... Folder in context: /Users/me/Desktop/Photos
+Example - follow-up referring to an earlier result (reuse the path from the note):
+Note: (context from the shell, not the user) Ran: find '/Users/me/Desktop/Photos' -maxdepth 1 -mindepth 1 - Listed 12 items... Folder in context: /Users/me/Desktop/Photos
 User: now zip that
 {"command": "zip -r '/Users/me/Desktop/Photos.zip' '/Users/me/Desktop/Photos'", "risk": "safe", "explanation": "Zips the Photos folder next to itself."}
 
-Example — vague target (ask, don't guess):
+Example - vague target (ask, don't guess):
 User: open a browser
 {"command": null, "risk": null, "explanation": "Which browser would you like me to open?", "options": ["Safari", "Google Chrome", "Firefox"]}
 
-Example — something only the internet can answer (search, never refuse):
+Example - something only the internet can answer (search, never refuse):
 User: what's the latest version of python
 {"command": null, "search": "latest Python version release", "risk": null, "explanation": "Looking that up on the web.", "options": null}
 
-Example — about this computer, not the world (a command, not a search):
+Example - about this computer, not the world (a command, not a search):
 User: how much disk space have I got left
 {"command": "df -h /", "search": null, "risk": "safe", "explanation": "Shows the free space on your main drive.", "options": null}
 
-Example — small talk, even with earlier results in the conversation (just
+Example - small talk, even with earlier results in the conversation (just
 answer; the user asked for nothing, so there is nothing to offer):
-Note: (context from the shell, not the user) Ran: find '/Users/me/Desktop' -maxdepth 1 -mindepth 1 — Listed 8 items... Folder in context: /Users/me/Desktop
+Note: (context from the shell, not the user) Ran: find '/Users/me/Desktop' -maxdepth 1 -mindepth 1 - Listed 8 items... Folder in context: /Users/me/Desktop
 User: hey
 {"command": null, "risk": null, "explanation": "Hey! Tell me what you'd like to do and I'll take care of it.", "options": null}
 """
 
     LAUNCH_NOTE = """Requests to open, launch, start, or run a specific, named application are
-always valid, safe shell requests — never refuse those. Start one with
+always valid, safe shell requests - never refuse those. Start one with
 `open -a '<App Name>'`, using the name the user said; if it's installed
 under a slightly different name the shell has its own fallback to find that
-same app. But when the user hasn't named which app they mean, ask — the
+same app. But when the user hasn't named which app they mean, ask - the
 fallback can only launch the app you name, so a wrong guess fails instead
 of opening something else."""
 
@@ -85,14 +85,14 @@ of opening something else."""
             return None
 
     def vram_gb(self):
-        """Apple Silicon has no separate VRAM — the GPU works out of the same
+        """Apple Silicon has no separate VRAM - the GPU works out of the same
         pool as everything else, and Metal will hand a large share of it to
         one process. Reporting that share as VRAM is what lets an M-series Mac
         pick the model its memory can genuinely hold rather than the
         conservative CPU-sized one nvidia-smi's silence would imply.
 
         Intel Macs fall through to the base probe, which finds nothing and
-        leaves the choice to RAM — correct, as their GPUs aren't worth
+        leaves the choice to RAM - correct, as their GPUs aren't worth
         offloading to."""
         if platform.machine() != "arm64":
             return super().vram_gb()

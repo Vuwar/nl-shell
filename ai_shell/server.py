@@ -3,7 +3,7 @@
 The app used to require a service the user had installed and started
 themselves. Owning that process instead means one less thing to install, and
 one less way for the app to be "broken" because something invisible wasn't
-running — but it also means the failures are now ours to report, and the
+running - but it also means the failures are now ours to report, and the
 process is now ours to clean up.
 
 Four things this is careful about:
@@ -12,8 +12,8 @@ Four things this is careful about:
     llama.cpp build into the config folder when the machine hasn't got one,
     so a fresh clone starts rather than stopping at an install instruction.
   * Not starting a second server. A port that already answers belongs to
-    somebody — a llama-server left running from a previous session, a
-    developer's own instance with hand-picked flags — and taking it over is
+    somebody - a llama-server left running from a previous session, a
+    developer's own instance with hand-picked flags - and taking it over is
     both cheaper and less surprising than racing it for the port.
   * Not hiding the wait. The first run downloads several gigabytes of model
     before the server binds anything at all, so "starting" can legitimately
@@ -41,7 +41,7 @@ from ai_shell import weights
 from ai_shell.platforms import current
 
 # Where llama-server's own output goes. It's verbose, it's on its own timeline,
-# and interleaving it with the shell's would make both unreadable — but it's
+# and interleaving it with the shell's would make both unreadable - but it's
 # also the only place the real reason for a failed start is written, so it goes
 # to a file the error message can point at rather than to /dev/null.
 LOG_PATH = os.path.join(config.CONFIG_DIR, "llama-server.log")
@@ -51,7 +51,7 @@ LOG_PATH = os.path.join(config.CONFIG_DIR, "llama-server.log")
 # it happens.
 #
 # The weights are on disk before the process starts (ai_shell.weights fetches
-# them), so this covers loading them into memory and nothing else — a genuine
+# them), so this covers loading them into memory and nothing else - a genuine
 # hang, not a download. It was thirty minutes when the first run's
 # multi-gigabyte fetch happened inside this wait.
 READY_TIMEOUT = 300
@@ -85,7 +85,7 @@ def _is_ready():
     """True once the server will actually answer a completion.
 
     /health is 503 while the model loads and 200 after, which is the
-    distinction that matters here — the port binds well before the weights
+    distinction that matters here - the port binds well before the weights
     are in memory, so a port check alone would hand back a server that
     rejects the first request."""
     try:
@@ -102,7 +102,7 @@ def _gpu_layers():
 
     Decided per start rather than per install, because it depends on what the
     user has open right now. config.GPU_LAYERS is the fallback for a machine
-    whose free memory can't be read at all — there, all-or-nothing against the
+    whose free memory can't be read at all - there, all-or-nothing against the
     card's total is the best guess available.
     """
     model = config.current_model()
@@ -129,7 +129,7 @@ def _argv(binary, model_path, gpu_layers=None):
         "-c", str(config.CONTEXT_SIZE),
         # One conversation at a time, which is what a shell prompt is. Left to
         # itself this build opens four slots and gives each one the full
-        # context, so -c 8192 becomes four caches of 8192 — on a 7B that is
+        # context, so -c 8192 becomes four caches of 8192 - on a 7B that is
         # about 1.8GB of graphics memory to hold three conversations nobody is
         # having, and it is taken out of the same budget the weights need.
         "-np", "1",
@@ -246,7 +246,7 @@ def _wait_until_ready():
 
         exit_code = _process.poll()
         if exit_code is not None:
-            # Dying during startup is the common failure — a missing backend
+            # Dying during startup is the common failure - a missing backend
             # DLL, a model that doesn't exist, a port already taken by
             # something that wasn't listening when we looked. All of them are
             # in the log, and none of them are worth waiting out.
@@ -267,7 +267,7 @@ def our_vram_gb():
     processes on Windows, so "how much is ours" cannot simply be asked.
 
     Clamped at zero because the two readings are moments apart on a shared
-    card — somebody else closing a window between them would otherwise make
+    card - somebody else closing a window between them would otherwise make
     our footprint negative.
     """
     if _free_vram_at_start is None or _free_vram_after_load is None:
@@ -278,7 +278,7 @@ def our_vram_gb():
 def others_vram_gb(free_now):
     """How much of the card is held by programs that aren't us.
 
-    The naive reading — total minus free — counts our own weights, which is
+    The naive reading - total minus free - counts our own weights, which is
     how this app came to tell a user that "other programs" were using 5.9GB
     of their card while it was itself using 3.3GB of that.
     """
@@ -294,7 +294,7 @@ def fit_notice():
 
     Only the permanent mismatch is reported here. A card that is merely busy
     right now is left to ai_shell.session, which says so only when an answer
-    was actually slow — a prediction made before the first request can be
+    was actually slow - a prediction made before the first request can be
     wrong by a rounding error, and being told the machine will be slow and
     then finding it isn't is worse than not being told.
     """

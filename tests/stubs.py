@@ -1,13 +1,13 @@
 """Stand-ins for the two things the tests can't have: a model, and a network.
 
-The model stub implements only the one shape ai_shell.llm uses — client.chat
+The model stub implements only the one shape ai_shell.llm uses - client.chat
 .completions.create(...) returning something with .choices[0].message.content.
 Replies are queued and handed out in order, which is what lets a test drive the
 retry path by saying "answer badly, then answer well".
 
 The HTTP stub is the same idea one layer down. ai_shell.fetch and
 ai_shell.weights exist to survive a connection that dies mid-download, and that
-failure can't be provoked against a real server on demand — so StubHTTP can be
+failure can't be provoked against a real server on demand - so StubHTTP can be
 told to drop the body after N bytes, to ignore a Range request, or to answer
 with a status code, and the tests drive the recovery from there.
 """
@@ -74,7 +74,7 @@ class StubResponse:
     """What urlopen returns: a readable body, a status, and headers.
 
     `fail_after` makes the body stop short, which is the failure this whole
-    feature exists for — a connection that dies mid-download.
+    feature exists for - a connection that dies mid-download.
     """
 
     def __init__(self, body, status=200, headers=None, fail_after=None):
@@ -105,7 +105,7 @@ class StubHTTP:
     """Stands in for urllib.request.urlopen, serving one body.
 
     `ranges=False` is a server that ignores a Range request and sends the whole
-    file with a 200 — the case that corrupts a naive resume. `failures` is how
+    file with a 200 - the case that corrupts a naive resume. `failures` is how
     many of the next calls die after `fail_after` bytes.
     """
 

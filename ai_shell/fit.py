@@ -4,12 +4,12 @@ when the answer is "less than it's taking".
 ai_shell.models sizes a model against the card's *total* memory. That is the
 bug this module exists to fix: a desktop, a compositor and a browser are
 holding some of that card before this app opens anything, and a model sized
-against the total does not fit — it is paged across the bus a piece at a time,
+against the total does not fit - it is paged across the bus a piece at a time,
 which is several times slower than never having touched the card at all.
 
 The rule lives here, alone, because three places need it and they must not
 disagree: the first-run sizing in ai_shell.models, the two warnings, and the
-model picker's idea of which rows fit. Numbers in, verdict out — no
+model picker's idea of which rows fit. Numbers in, verdict out - no
 subprocess, no filesystem, no network, so it is testable on a machine with no
 graphics card at all.
 """
@@ -22,7 +22,7 @@ VRAM_RESERVE_FLOOR_GB = 1.0
 VRAM_RESERVE_FRACTION = 0.15
 
 # Below this, on a machine with a graphics card, the model is not merely small
-# — it is being paged. The machine this was written against measured 0.82.
+# - it is being paged. The machine this was written against measured 0.82.
 # A card-less laptop runs at 3 or so by nature, which is why every caller
 # checks for a card before consulting this number.
 SLOW_TOKENS_PER_SEC = 5.0
@@ -42,14 +42,14 @@ MIN_TIMED_TOKENS = 20
 #
 # Note the last row: asking for every layer leaves *less* on the card, not
 # more. It is not gradual paging, it is the allocation failing and llama.cpp
-# falling back — which is why neither flash attention nor an 8-bit cache moved
+# falling back - which is why neither flash attention nor an 8-bit cache moved
 # it (both were tried; both stayed at 6.9).
 VRAM_SAFETY_GB = 0.5
 
 # What going all-in costs beyond the layers themselves: the output tensor, and
 # the cache moving onto the card with them. Demanded on top of the ordinary
 # margin before every layer is offloaded, because that step is the one with a
-# cliff under it — being wrong about a partial split costs a few percent, and
+# cliff under it - being wrong about a partial split costs a few percent, and
 # being wrong about a full one costs six times the speed.
 FULL_OFFLOAD_MARGIN_GB = 1.0
 
@@ -80,7 +80,7 @@ def usable_vram_gb(total_gb, shared=False):
 def gpu_layers(model, free_vram_gb, context_size, shared=False):
     """How many of `model`'s layers to put on the card: -1 for all, 0 for none.
 
-    All-or-nothing was the wrong shape for this decision, and measurably so —
+    All-or-nothing was the wrong shape for this decision, and measurably so -
     see the table above VRAM_SAFETY_GB. The old rule could only pick the top
     of that curve or the bottom of it, and which one it picked turned on a
     margin of a few hundred megabytes it never measured.
@@ -92,7 +92,7 @@ def gpu_layers(model, free_vram_gb, context_size, shared=False):
         output tensor and a margin on top. Wrong here costs six times the
         speed.
       * How many layers otherwise. Wrong here costs a few percent, so it fills
-        to a smaller margin — and is never allowed to reach the full count,
+        to a smaller margin - and is never allowed to reach the full count,
         which is the cliff by another route.
 
     Returning -1 rather than a count for the everything case leaves llama.cpp
@@ -129,11 +129,11 @@ def verdict(model, total_vram_gb, free_vram_gb=None, shared=False):
     Two different problems with two different fixes, which is why they are two
     words rather than one "it's slow":
 
-      * "oversized" — the model cannot fit this card whatever the user closes.
+      * "oversized" - the model cannot fit this card whatever the user closes.
         A permanent mismatch, decided from the total alone, so it survives a
         machine whose free memory can't be read (AMD, Intel, anything without
         nvidia-smi).
-      * "squeezed" — it would fit an idle card, but something else is holding
+      * "squeezed" - it would fit an idle card, but something else is holding
         the memory right now. A game, usually. Closing it actually fixes this.
 
     None is the common case and the default: no card, no reading, or nothing
@@ -157,7 +157,7 @@ def explain(kind, total_vram_gb=None, free_vram_gb=None, measured=True):
     its own sentence.
 
     `measured` is whether an answer has actually been slow. False is the
-    startup check, which is describing what this machine is about to be like —
+    startup check, which is describing what this machine is about to be like -
     opening that with "that was slow" is a claim about something the user has
     not experienced yet.
     """
@@ -166,7 +166,7 @@ def explain(kind, total_vram_gb=None, free_vram_gb=None, measured=True):
     if kind == "squeezed":
         held = ""
         if total_vram_gb and free_vram_gb is not None:
-            held = f" — other programs are using {total_vram_gb - free_vram_gb:.1f}GB of it"
+            held = f" - other programs are using {total_vram_gb - free_vram_gb:.1f}GB of it"
         return (
             f"{opening} your graphics card is nearly full{held}. "
             "Closing what else is running, a game or a browser usually, makes this much faster."

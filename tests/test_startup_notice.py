@@ -1,4 +1,4 @@
-"""ai_shell.server — what the app says about the graphics card at startup.
+"""ai_shell.server - what the app says about the graphics card at startup.
 
 The ordering assertion is the important one: free memory has to be sampled
 before llama-server loads, or the app's own weights are counted as somebody
@@ -21,7 +21,7 @@ class Ordering(unittest.TestCase):
 
         def start_background(argv, log):
             events.append("start")
-            raise OSError("stop here — the ordering is all this test wants")
+            raise OSError("stop here - the ordering is all this test wants")
 
         with mock.patch.object(type(server.current), "free_vram_gb", side_effect=probe), \
              mock.patch.object(type(server.current), "start_background", side_effect=start_background), \

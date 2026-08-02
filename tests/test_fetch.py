@@ -1,4 +1,4 @@
-"""ai_shell.fetch — the download half, where resuming is the whole point.
+"""ai_shell.fetch - the download half, where resuming is the whole point.
 
 A model is several gigabytes over a connection that may not survive it. What
 matters here is that an interrupted download is worth something afterwards,

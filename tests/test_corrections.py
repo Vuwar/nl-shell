@@ -1,4 +1,4 @@
-"""ai_shell.corrections — what gets written when the user fixes a command,
+"""ai_shell.corrections - what gets written when the user fixes a command,
 and what gets scrubbed out of it on the way."""
 
 import json

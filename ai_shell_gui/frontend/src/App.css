@@ -1,7 +1,7 @@
 /* Layout note: .panel-body must size to its CONTENT, never to the window.
    The resize hook observes the body's height and animates the OS window to
    match; if the body were height:100% it could never outgrow the window and
-   output would clip (the old bug). So it has no fixed height — and a fixed
+   output would clip (the old bug). So it has no fixed height - and a fixed
    width, so a window mid-fold can't reflow the measurement out from under it.
    The panel around it is the window: it fills whatever the fold has left. */
 .shell {
@@ -16,8 +16,8 @@
   min-height: 100vh;
   border-radius: var(--radius);
   background: var(--glass-tint), var(--glass-base);
-  /* Edge lines are invisible at rest — the panel reads as a borderless glass
-     slab — and only light up while the input is focused. Border stays 1px so
+  /* Edge lines are invisible at rest - the panel reads as a borderless glass
+     slab - and only light up while the input is focused. Border stays 1px so
      nothing shifts when it appears. */
   border: 1px solid transparent;
   box-shadow: none;
@@ -25,7 +25,7 @@
      panel has somewhere to scroll to (the sheen parks itself 900px off to the
      right). Focusing the input while the window is mid-unfold and only 48px
      wide then scrolls the panel sideways to reveal it, and nothing scrolls it
-     back — the whole panel ends up shifted left for good. `clip` isn't a
+     back - the whole panel ends up shifted left for good. `clip` isn't a
      scroll container at all, so there is nothing to scroll. Engines too old
      for it drop the line and keep `hidden` above; the unfold also resets the
      scroll for those. */
@@ -37,11 +37,11 @@
 }
 
 .panel-body {
-  /* Pinned, not stretched — see the layout note at the top of this file. */
+  /* Pinned, not stretched - see the layout note at the top of this file. */
   width: var(--panel-w);
   /* And never compressed: the panel is as tall as the window, so a flex item
      free to shrink would be squeezed to fit the window it is supposed to be
-     telling how tall to be — new output would measure as no taller than the
+     telling how tall to be - new output would measure as no taller than the
      window already is, and the panel would never grow again. */
   flex: 0 0 auto;
   display: flex;
@@ -185,7 +185,7 @@
   box-shadow: 0 0 0 2px rgba(16, 14, 24, 0.7), 0 0 7px var(--danger-soft);
 }
 
-/* Nothing to report — idle, or thinking (which the dots already say). */
+/* Nothing to report - idle, or thinking (which the dots already say). */
 .mini-badge.idle,
 .mini-badge.thinking {
   display: none;
@@ -193,7 +193,7 @@
 
 .panel.mini {
   border-color: rgba(255, 255, 255, 0.1);
-  /* Lit top edge — the specular line a small piece of glass would catch. */
+  /* Lit top edge - the specular line a small piece of glass would catch. */
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1) inset;
 }
 
@@ -277,7 +277,7 @@
 }
 
 /* The real input handles caret, selection and editing, but its glyphs are
-   transparent — .input-mirror paints the visible text so every character can
+   transparent - .input-mirror paints the visible text so every character can
    animate in. Font metrics must stay identical between the two layers. */
 .input-row input {
   width: 100%;
@@ -362,7 +362,7 @@
   opacity: 0.34;
 }
 
-/* The outgoing half of a swap — see HINT_FADE in App.jsx. */
+/* The outgoing half of a swap - see HINT_FADE in App.jsx. */
 .input-hint.out {
   opacity: 0;
   transform: translateY(-3px);
@@ -391,7 +391,7 @@
   }
 
   /* The window snaps between the two shapes (useWindowGeometry drops its
-     easing too), so the tile has nothing left to fold out of — it just is. */
+     easing too), so the tile has nothing left to fold out of - it just is. */
   .mini-orb,
   .panel.mini .mini-orb,
   .panel.mini:hover .mini-orb,
@@ -607,8 +607,8 @@
   background: linear-gradient(180deg, rgba(139, 123, 255, 0.16), rgba(139, 123, 255, 0.07));
 }
 
-/* Held back rather than struck out. A model bigger than the card still runs —
-   the part that fits goes on the card — so this is "slower", not "no". */
+/* Held back rather than struck out. A model bigger than the card still runs -
+   the part that fits goes on the card - so this is "slower", not "no". */
 .model-row.unfit {
   opacity: 0.72;
 }
@@ -652,7 +652,7 @@
   gap: 12px;
 }
 
-/* Whole row is the control — a 34px track is a small thing to ask someone to
+/* Whole row is the control - a 34px track is a small thing to ask someone to
    hit when the label next to it means exactly the same. */
 .switch-row {
   display: flex;
@@ -768,7 +768,7 @@
 }
 
 /* Only up while the model server starts. The window opens before the model is
-   loaded, so this is the panel saying what it's waiting for — same dim italic
+   loaded, so this is the panel saying what it's waiting for - same dim italic
    as a system line, and the same top rule as anything else that appears under
    the input row. */
 .boot-row {
@@ -797,7 +797,7 @@
 
 /* --- update ready --------------------------------------------------------
    Same shape as the boot row, because it's the same kind of thing: a line the
-   panel grew to say something about itself. Not styled as an alert — an
+   panel grew to say something about itself. Not styled as an alert - an
    update that has already downloaded is good news sitting quietly, and the
    only urgency an app should manufacture about itself is none. */
 .update-row {
@@ -1074,7 +1074,7 @@
 
 /* A failed model start. The button shares the line with the message rather
    than sitting in a button row of its own, so the error stays one thing on
-   screen — and the message runs to several lines, hence the top alignment. */
+   screen - and the message runs to several lines, hence the top alignment. */
 .error-line {
   display: flex;
   align-items: flex-start;
@@ -1118,7 +1118,7 @@ pre.output-block {
   padding: 3px 9px;
   cursor: pointer;
   white-space: nowrap;
-  /* Present but quiet — findable without competing with the output itself. */
+  /* Present but quiet - findable without competing with the output itself. */
   opacity: 0.45;
   transition: opacity 160ms ease, color 160ms ease, border-color 160ms ease,
     background 160ms ease;
@@ -1217,7 +1217,7 @@ pre.output-block {
 }
 
 /* Rows are buttons, so they can't be display:contents cells of one shared
-   grid — a contents box can't paint a hover state. Fixed column widths keep
+   grid - a contents box can't paint a hover state. Fixed column widths keep
    them aligned instead, with the name taking whatever is left. */
 .listing-row {
   display: flex;
@@ -1384,7 +1384,7 @@ pre.output-block {
 }
 
 /* The small-model warning. Sits between the answer and its sources because
-   that's the order it has to be read in — the sentence above may be wrong,
+   that's the order it has to be read in - the sentence above may be wrong,
    the links below are not. Warm rather than red: nothing has failed. */
 .answer-caveat {
   font-size: 11.5px;
@@ -1401,7 +1401,7 @@ pre.output-block {
   flex-direction: column;
 }
 
-/* Same full-bleed hover as a listing row — these are the same gesture (click
+/* Same full-bleed hover as a listing row - these are the same gesture (click
    the thing to open it), so they shouldn't look like a different one. */
 .answer-source {
   display: flex;
@@ -1450,7 +1450,7 @@ pre.output-block {
 }
 
 /* Marks a source whose page was actually opened, rather than one the answer
-   only saw a search-engine teaser of. Deliberately quiet — it's a detail for
+   only saw a search-engine teaser of. Deliberately quiet - it's a detail for
    someone weighing the answer, not something to read on the way past. */
 .source-read {
   font-family: var(--ui);

@@ -32,7 +32,7 @@
      itself would only show the window's own corners through the gap. */
   --radius: 10px;
 
-  /* WINDOW_WIDTH and MINI_SIZE in gui/app.py — the two shapes the window
+  /* WINDOW_WIDTH and MINI_SIZE in gui/app.py - the two shapes the window
      takes. The panel's content is laid out at --panel-w whatever the window
      is currently doing (see the layout note in App.css). */
   --panel-w: 560px;
