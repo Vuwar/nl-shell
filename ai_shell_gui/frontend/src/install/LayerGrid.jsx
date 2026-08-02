@@ -27,13 +27,28 @@ export default function LayerGrid({ layers, filled, phase, gpuLayers, animate = 
     if (fill >= 1) classes.push("full");
     else if (fill > 0) classes.push("partial");
     if (phase === "loading" && fill >= 1) classes.push(onCard ? "card" : "cpu");
+
+    // Diagonal: the breath enters at the top-left corner and travels to the
+    // bottom-right, so neighbours are near each other in the cycle and the
+    // block moves as one thing. The first version delayed by (i % 17), which
+    // has no relation to a grid seven wide, so adjacent bricks sat at
+    // unrelated points in the cycle and it read as noise.
+    const row = Math.floor(i / columns);
+    const column = i % columns;
+    const step = row + column;
+
     bricks.push(
       <span
         key={i}
         className={classes.join(" ")}
-        // Out of phase per brick, so a filled grid shimmers rather than
-        // pulsing as one object.
-        style={{ "--fill": fill, "--delay": `${(i % 17) * 90}ms` }}
+        style={{
+          "--fill": fill,
+          "--delay": `${step * 260}ms`,
+          // The handoff to the card gets its own, much tighter stagger. It
+          // has to finish inside the seconds a model takes to load, where the
+          // breath has a four second cycle to play with.
+          "--warm-delay": `${step * 45}ms`,
+        }}
       />
     );
   }

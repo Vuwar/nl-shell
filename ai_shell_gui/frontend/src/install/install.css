@@ -53,8 +53,9 @@
   100% { box-shadow: 0 0 0 rgba(139, 123, 255, 0); }
 }
 
-/* Waiting, not stalled. Filled bricks breathe with a per-brick delay so the
-   block reads as alive while a connection is being slow. */
+/* Waiting, not stalled. The breath enters at the top-left and travels to the
+   bottom-right, one brick behind the last, so the block moves as a single
+   thing rather than as thirty independent lights. */
 .layer-grid.downloading .brick.full::after {
   animation: brickBreathe 4s ease-in-out infinite;
   animation-delay: var(--delay);
@@ -92,9 +93,9 @@
 /* Loading onto the card. The layers that fit go warm, the rest stay cool
    glass, which is the same fact the settings screen states in a sentence. */
 .layer-grid.loading .brick.card::after {
-  background: linear-gradient(90deg, rgba(255, 186, 116, 0.7), rgba(255, 226, 183, 0.5));
+  background: linear-gradient(90deg, rgba(255, 186, 116, 0.72), rgba(255, 204, 145, 0.8));
   transition: background 600ms ease;
-  transition-delay: var(--delay);
+  transition-delay: var(--warm-delay);
 }
 
 /* Retrying: the bytes are still on the disk, so the bricks stay exactly where
