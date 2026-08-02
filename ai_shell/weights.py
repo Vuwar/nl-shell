@@ -233,16 +233,21 @@ def _download(file, path, label, before, total, say):
     while True:
         attempt += 1
         try:
-            fetch.download(
-                file.url,
-                partial,
-                lambda percent: say(
-                    f"Downloading {label} - "
-                    f"{(before + file.size * percent // 100) * 100 // total}% "
-                    f"({_gb(before + file.size * percent // 100)} of {_gb(total)} GB)"
-                ),
-                resume=True,
-            )
+            # Whole percents only. fetch reports five times a second now, and
+            # this line goes to a terminal as well as to the window.
+            said = [-1]
+
+            def progress(read, file_total):
+                done = min(before + read, total)
+                percent = done * 100 // total if total else 0
+                if percent != said[0]:
+                    said[0] = percent
+                    say(
+                        f"Downloading {label} - {percent}% "
+                        f"({_gb(done)} of {_gb(total)} GB)"
+                    )
+
+            fetch.download(file.url, partial, progress, resume=True)
         except fetch.FetchError as error:
             if not _retryable(error) or attempt >= ATTEMPTS:
                 raise WeightsError(

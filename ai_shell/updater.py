@@ -320,8 +320,20 @@ def stage(update, on_progress=None):
 
     if update.get("url") and not os.path.exists(downloaded):
         partial = downloaded + ".partial"
+
+        # fetch reports raw bytes five times a second now. What leaves here is
+        # still a percentage that changes at most a hundred times, because it
+        # ends up in a status dict the window polls.
+        said = [-1]
+
+        def progress(read, total):
+            percent = read * 100 // total if total else 0
+            if percent != said[0] and on_progress:
+                said[0] = percent
+                on_progress(percent)
+
         try:
-            fetch.download(update["url"], partial, on_progress)
+            fetch.download(update["url"], partial, progress)
             os.replace(partial, downloaded)
         except (fetch.FetchError, OSError) as error:
             _remove(partial)

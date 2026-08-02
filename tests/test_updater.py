@@ -16,6 +16,7 @@ import zipfile
 from unittest import mock
 
 from ai_shell import fetch, updater
+from tests.stubs import StubHTTP
 
 
 class Versions(unittest.TestCase):
@@ -287,6 +288,28 @@ class Staging(unittest.TestCase):
             "channel": updater.WINDOWS_PORTABLE,
             "notes_url": "",
         }
+
+    def test_download_progress_still_counts_in_whole_percents(self):
+        # fetch reports raw bytes five times a second now. What reaches the
+        # updater's status dict, and from there the window, must still be a
+        # percentage that changes at most a hundred times.
+        import io
+
+        name = "AI-Shell-0.2.0-windows-x64.zip"
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as zf:
+            zf.writestr("AI Shell/AI Shell.exe", "new" * 40000)
+        body = buffer.getvalue()
+
+        seen = []
+        update = dict(self._update(name), url="https://example/app.zip")
+        with mock.patch("urllib.request.urlopen", StubHTTP(body)):
+            updater.stage(update, on_progress=seen.append)
+
+        self.assertTrue(seen)
+        self.assertEqual(seen, sorted(seen))
+        self.assertEqual(len(seen), len(set(seen)))
+        self.assertTrue(all(isinstance(p, int) and 0 <= p <= 100 for p in seen))
 
     def test_the_new_app_is_unpacked_beside_the_one_it_replaces(self):
         # Beside it, so applying the update is a rename inside one directory

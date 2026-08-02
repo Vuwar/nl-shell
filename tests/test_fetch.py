@@ -47,11 +47,42 @@ class Download(unittest.TestCase):
         seen = []
         http = StubHTTP(BODY)
         with mock.patch("urllib.request.urlopen", http):
-            fetch.download("https://example/x", self.path, seen.append, resume=True)
+            fetch.download(
+                "https://example/x", self.path,
+                lambda read, total: seen.append((read, total)),
+                resume=True,
+            )
         # A resumed download reports from where it restarted, not from zero.
         self.assertTrue(seen)
-        self.assertGreaterEqual(seen[0], 50)
-        self.assertEqual(seen[-1], 100)
+        self.assertGreaterEqual(seen[0][0], 51200)
+        self.assertEqual(seen[-1], (len(BODY), len(BODY)))
+
+    def test_progress_reports_the_end_even_when_the_throttle_would_not(self):
+        # A body this small transfers well inside one throttle window, so the
+        # only report it can produce is the closing one. A download that says
+        # nothing at all leaves a progress bar frozen at zero forever.
+        seen = []
+        http = StubHTTP(BODY)
+        with mock.patch("urllib.request.urlopen", http):
+            fetch.download(
+                "https://example/x", self.path,
+                lambda read, total: seen.append((read, total)),
+            )
+        self.assertEqual(seen[-1], (len(BODY), len(BODY)))
+
+    def test_progress_is_throttled_by_time_not_by_percentage(self):
+        # Ten percent of this body is 10KB, which is 40 chunks. If the old
+        # percentage step were still in charge there would be ten reports; on
+        # a clock that never advances there is exactly one, at the end.
+        seen = []
+        http = StubHTTP(BODY)
+        with mock.patch("urllib.request.urlopen", http):
+            with mock.patch("time.monotonic", return_value=1000.0):
+                fetch.download(
+                    "https://example/x", self.path,
+                    lambda read, total: seen.append((read, total)),
+                )
+        self.assertEqual(len(seen), 1)
 
     def test_a_server_ignoring_range_starts_over_instead_of_corrupting(self):
         with open(self.path, "wb") as handle:

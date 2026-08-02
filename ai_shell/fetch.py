@@ -17,6 +17,7 @@ import json
 import os
 import stat
 import tarfile
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -25,10 +26,11 @@ import zipfile
 # in someone's logs is more use than a Python default.
 USER_AGENT = "ai-shell"
 
-# How often a download reports back. Percentage rather than bytes because the
-# callers put this line in front of a user, where "37%" says more than a
-# number of megabytes against a total they never asked about.
-PROGRESS_STEP = 10
+# How often a download reports back, in seconds. Time rather than percentage:
+# a percentage step means one report per several hundred megabytes on a large
+# model, which is a progress bar that moves five times an hour. The callers
+# that print a line still count in whole percents, and now do it themselves.
+PROGRESS_INTERVAL = 0.2
 
 
 class FetchError(RuntimeError):
@@ -71,7 +73,7 @@ def github_release(api_url, timeout=30):
 
 
 def download(url, destination, on_progress=None, timeout=60, resume=False):
-    """Fetch `url` to `destination`, reporting whole percentages as it goes.
+    """Fetch `url` to `destination`, reporting (bytes read, total) as it goes.
 
     With `resume`, an existing `destination` is continued rather than
     replaced: its length becomes a Range request, and the body is appended.
@@ -104,7 +106,7 @@ def download(url, destination, on_progress=None, timeout=60, resume=False):
                 existing = 0
             total = existing + int(response.headers.get("Content-Length") or 0)
             read = existing
-            reported = (read * 100 // total) - (read * 100 // total) % PROGRESS_STEP if total else 0
+            reported_at = time.monotonic()
             with open(destination, "ab" if resumed else "wb") as handle:
                 while True:
                     chunk = response.read(256 * 1024)
@@ -112,11 +114,15 @@ def download(url, destination, on_progress=None, timeout=60, resume=False):
                         break
                     handle.write(chunk)
                     read += len(chunk)
-                    if total and on_progress:
-                        percent = read * 100 // total
-                        if percent >= reported + PROGRESS_STEP:
-                            reported = percent - percent % PROGRESS_STEP
-                            on_progress(reported)
+                    now = time.monotonic()
+                    if on_progress and now - reported_at >= PROGRESS_INTERVAL:
+                        reported_at = now
+                        on_progress(read, total)
+            # Always, whatever the throttle allowed: a body that fits inside
+            # one interval would otherwise report nothing at all, and a caller
+            # would be left showing the last number it happened to see.
+            if on_progress:
+                on_progress(read, total)
     except (urllib.error.URLError, OSError, ValueError) as error:
         raise FetchError(f"Couldn't download {url}: {error}", error) from None
 

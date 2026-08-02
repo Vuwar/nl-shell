@@ -145,12 +145,20 @@ def _install(say):
     os.makedirs(staging, exist_ok=True)
     archive_path = os.path.join(staging, name)
 
+    # Named in full rather than "%": these lines are also the desktop panel's
+    # startup message, where a bare number says nothing. Whole percents only,
+    # because fetch reports five times a second and this line goes to a
+    # terminal.
+    said = [-1]
+
+    def progress(read, total):
+        percent = read * 100 // total if total else 0
+        if percent != said[0]:
+            said[0] = percent
+            say(f"Downloading llama.cpp - {percent}%")
+
     try:
-        # Named in full rather than "%": these lines are also the desktop
-        # panel's startup message, where a bare number says nothing.
-        fetch.download(
-            assets[name], archive_path, lambda percent: say(f"Downloading llama.cpp - {percent}%")
-        )
+        fetch.download(assets[name], archive_path, progress)
         fetch.extract(archive_path, staging)
         os.remove(archive_path)
 
