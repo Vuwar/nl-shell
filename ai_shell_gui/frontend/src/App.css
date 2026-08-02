@@ -1043,6 +1043,74 @@
   box-sizing: border-box;
 }
 
+/* Tabular output. Scrolls sideways on its own rather than stretching the
+   panel, because a table with six columns must not decide how wide the
+   conversation is. */
+.table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  /* Without this the table vanishes as soon as anything is typed after it.
+     .output is a flex column with a max-height, so every entry is a flex
+     item - and a flex item whose overflow isn't visible has an automatic
+     minimum size of zero instead of its content height. Setting overflow-x
+     to make wide tables scroll sideways is what opts this one in: it becomes
+     the only entry in the conversation that flex is allowed to crush, so the
+     moment the output is over its max-height the table is squeezed to a
+     sliver of its own scrollbar while every text entry keeps its size.
+     Refusing to shrink puts the overflow back where it belongs, on .output,
+     which already scrolls. */
+  flex-shrink: 0;
+}
+
+.result-table {
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.result-table th,
+.result-table td {
+  text-align: left;
+  padding: 3px 14px 3px 0;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.result-table th {
+  font-weight: 600;
+  color: var(--text-dim, var(--text));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  padding-bottom: 5px;
+}
+
+.result-table tbody tr:first-child td {
+  padding-top: 5px;
+}
+
+/* What the command does, in words, between the command and the decision.
+   Same tinted panel as the command above it and the question below, with no
+   rounding of its own, so the three read as one block rather than as an
+   aside. Proportional type, not mono: this is the half meant to be read
+   rather than inspected. */
+.confirm-does {
+  margin: 0;
+  padding: 8px 12px 10px 30px;
+  list-style: disc;
+  font-family: var(--ui);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim, var(--text));
+  background: rgba(255, 107, 107, 0.08);
+  border-left: 1px solid rgba(255, 107, 107, 0.2);
+  border-right: 1px solid rgba(255, 107, 107, 0.2);
+}
+
+.confirm-does li {
+  word-break: break-word;
+}
+
 .confirm-edit:focus {
   border-color: rgba(255, 107, 107, 0.45);
 }

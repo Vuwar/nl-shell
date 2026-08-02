@@ -324,6 +324,87 @@ class UnderTheModel(unittest.TestCase):
         self.assertIsNone(data["risk_reason"])
 
 
+class ThroughAWrapper(unittest.TestCase):
+    """A dangerous command handed to a launcher is still a dangerous command.
+
+    The rules read the verb at the front of a clause, so anything that takes
+    the real verb as an argument hides it. `Start-Process` is the one that
+    matters here, because it's the form this app's own prompt teaches the
+    model to write - which means the wrapped shape is the common one, not the
+    exotic one.
+    """
+
+    def _reason(self, command):
+        return policy.escalate(command, exists=_nothing_exists)
+
+    def test_a_registry_import_wrapped_in_start_process(self):
+        # `regedit /s file.reg` writes to the registry with no window and no
+        # prompt. Caught when written plainly; this is the same thing wearing
+        # a hat.
+        self.assertIn("system", self._reason(
+            "Start-Process regedit -ArgumentList '/s','patch.reg'"))
+
+    def test_the_filepath_form_too(self):
+        self.assertIn("system", self._reason(
+            "Start-Process -FilePath 'regedit' -ArgumentList '/s','patch.reg'"))
+
+    def test_a_delete_wrapped_in_start_process(self):
+        self.assertIn("delete", self._reason(
+            "Start-Process -FilePath 'powershell' -ArgumentList '-Command','Remove-Item notes.txt'"))
+
+    def test_the_powershell_alias(self):
+        self.assertIn("system", self._reason("saps regedit -ArgumentList '/s','patch.reg'"))
+
+    def test_a_backgrounded_launch(self):
+        # nohup and setsid take the real command as their argument the same
+        # way, and this app writes nohup itself on Linux.
+        self.assertIn("delete", self._reason("nohup rm -rf ~ >/dev/null 2>&1 &"))
+        self.assertIn("delete", self._reason("setsid rm -rf ~"))
+
+    def test_the_admin_rule_still_wins(self):
+        # -Verb runas was already caught, and says something more specific
+        # than whatever the wrapped command would say.
+        self.assertIn("administrator", self._reason(
+            "Start-Process -FilePath 'regedit' -Verb runas"))
+
+
+class LaunchingIsNotChanging(unittest.TestCase):
+    """Opening one of these tools changes nothing until it's told to.
+
+    `regedit` on its own opens a window. `regedit /s patch.reg` rewrites the
+    registry without one. Treating those the same put a confirmation in front
+    of "open registry editor", which is the false positive this file's own
+    docstring warns about: ask about everything and people stop reading.
+    """
+
+    def _reason(self, command):
+        return policy.escalate(command, exists=_nothing_exists)
+
+    def test_the_bare_tool_just_opens(self):
+        self.assertIsNone(self._reason("regedit"))
+        self.assertIsNone(self._reason("Start-Process -FilePath 'regedit'"))
+        self.assertIsNone(self._reason("netsh"))
+        self.assertIsNone(self._reason("schtasks"))
+
+    def test_the_same_tool_told_to_do_something(self):
+        self.assertIn("system", self._reason("regedit /s patch.reg"))
+        self.assertIn("system", self._reason("netsh advfirewall set allprofiles state off"))
+        self.assertIn("system", self._reason("reg add HKCU\\Software\\X /v Y /d 1"))
+
+    def test_the_ones_that_act_the_moment_they_run(self):
+        # Not everything in that group needs arguments. Set-ExecutionPolicy
+        # bare prompts and then changes the policy; a service command with no
+        # arguments is still a service command.
+        self.assertIsNotNone(self._reason("Set-ExecutionPolicy"))
+        self.assertIsNotNone(self._reason("Remove-Service"))
+
+    def test_nothing_else_was_loosened(self):
+        # The narrowing above is only about that one group. A bare destructive
+        # verb is still a destructive verb.
+        self.assertIn("delete", self._reason("rm"))
+        self.assertIn("erases", self._reason("diskpart"))
+
+
 class WhatTheConfirmationSays(unittest.TestCase):
     """The console REPL's prompt. A confirmation that says why it appeared is
     read; one that warns in general terms is answered without looking."""

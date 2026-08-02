@@ -87,6 +87,30 @@ def human_size(size):
         value /= 1024
 
 
+def format_table(table):
+    """A parsed table as aligned columns for the console.
+
+    Sized to the widest value in each column rather than to a console width,
+    which is the whole point of having re-run the command: the shell's own
+    version was cut to eighty columns and lost the ends of the names.
+    """
+    columns, rows = table["columns"], table["rows"]
+    if not rows:
+        return "Nothing there."
+    widths = [
+        max(len(columns[index]), *(len(row[index]) for row in rows))
+        for index in range(len(columns))
+    ]
+
+    def line(cells):
+        return "  ".join(cell.ljust(width) for cell, width in zip(cells, widths)).rstrip()
+
+    return "\n".join(
+        [line(columns), line(["-" * width for width in widths])]
+        + [line(row) for row in rows]
+    )
+
+
 def format_listing(items, kind="item"):
     """Two aligned columns for the console: name, then size."""
     if not items:

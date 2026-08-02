@@ -25,6 +25,28 @@ class Platform:
     EXAMPLES = ""       # worked examples, in this OS's shell and path style
     LAUNCH_NOTE = ""    # how the model should launch an application
 
+    # The OS's own tools, as {what a user calls it: (proper name, target)}.
+    # Read by ai_shell.rules.apps, which answers these without the model at
+    # all: they aren't listed under these names in APP_SOURCE, so a wrong
+    # guess can't be rescued by the app-launch fallback, and the right answer
+    # is a fixed string rather than anything to reason about. Empty is a fine
+    # answer for a platform with no settled names for them.
+    SYSTEM_APPS = {}
+
+    # Switches this shell can't actually flip, as {what the user calls it:
+    # (proper name, the settings page it lives on)}. Read by
+    # ai_shell.rules.toggles.
+    #
+    # "Turn off bluetooth" has no honest command behind it: the radio is not
+    # a service, disabling the device needs administrator rights, and the
+    # real switch is a WinRT call rather than anything a shell can run. Asked
+    # for one anyway, the model invented "Bluetooth Adapter 1" and "Bluetooth
+    # Adapter 2" and then wrote a Set-Service that changed a startup type and
+    # toggled nothing. Opening the page with the switch on it is one click
+    # from what the user asked for, always works, and needs no rights - and
+    # the explanation says plainly that it isn't the flip itself.
+    SETTINGS_TOGGLES = {}
+
     # Whether to prefer the backslash-repaired reading of the model's JSON.
     # Worth it only where paths are full of backslashes the model won't
     # escape; elsewhere it risks mangling an escape it did mean. See
@@ -62,6 +84,31 @@ class Platform:
     def open_command(self, path):
         """A command that opens `path` in whatever app the OS uses for it."""
         raise NotImplementedError
+
+    def project_table(self, command):
+        """`command` re-written to emit a table nothing truncates, or None.
+
+        None means "don't", and it is the answer for anything whose verb
+        isn't known to be read-only: the projected command is run a second
+        time, so a command that changes something would change it twice.
+        Platforms without a projection return None for everything, and their
+        output is shown as the text it came back as.
+        """
+        return None
+
+    def parse_table(self, output):
+        """A projected table as {"columns": [...], "rows": [[...]]}, or None
+        when `output` isn't one after all."""
+        return None
+
+    def system_app_command(self, target):
+        """A command that opens one of SYSTEM_APPS' targets.
+
+        The same thing as opening a file on Windows, where the targets are
+        executables and settings URIs and Start-Process takes all of them.
+        Platforms whose system tools are launched differently override this.
+        """
+        return self.open_command(target)
 
     def strip_error_prefix(self, line):
         """A line of error output with the shell's own noise removed, used

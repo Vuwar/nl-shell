@@ -74,11 +74,30 @@ _verbs(
 )
 _verbs(
     "changes how the system is set up",
-    "reg", "regedit", "systemctl", "launchctl", "service", "set-service",
-    "new-service", "remove-service", "set-executionpolicy", "set-mppreference",
-    "netsh", "iptables", "nft", "ufw", "crontab", "schtasks", "mount",
-    "umount", "bcdedit", "sfc", "dism",
+    # These act the moment they run. Set-ExecutionPolicy with no arguments
+    # asks for the policy and then sets it; a service command with nothing
+    # after it is still a service command.
+    "set-service", "new-service", "remove-service", "set-executionpolicy",
+    "set-mppreference",
 )
+
+# The same reason, but only once they've been told what to change. Bare, every
+# one of these prints something, lists something, or opens a window: `regedit`
+# is a viewer, `netsh` is a prompt, `schtasks` lists tasks, `sfc` prints its
+# usage. Nothing on this machine is different afterwards.
+#
+# Split out because treating the two the same put a confirmation in front of
+# "open registry editor", and this file's own docstring is the argument
+# against that: a layer that asks about everything teaches people to confirm
+# without reading. The dangerous form - `regedit /s patch.reg`, which rewrites
+# the registry with no window at all - has arguments by definition.
+_WITH_ARGS = {}
+for _name in (
+    "reg", "regedit", "systemctl", "launchctl", "service", "netsh", "iptables",
+    "nft", "ufw", "crontab", "schtasks", "mount", "umount", "bcdedit", "sfc",
+    "dism",
+):
+    _WITH_ARGS[_name] = "changes how the system is set up"
 _verbs(
     "asks for administrator rights",
     "sudo", "su", "doas", "runas", "gsudo",
@@ -172,20 +191,48 @@ _SEPARATOR = re.compile(r"&&|\|\||[;|\n\r`]|\$\(|\)")
 
 _TOKEN = re.compile(r"'[^']*'|\"[^\"]*\"|\S+")
 
+# Launchers: they don't do anything themselves, they run what they're handed.
+# So the verb at the front of the clause is theirs, not the one that matters.
+# `Start-Process` is the important one, because it is the form this app's own
+# prompt teaches the model to write - the wrapped shape is the common one here,
+# not the exotic one. `sudo` and friends are deliberately absent: they are
+# already escalated on sight, so looking through them would change nothing.
+_LAUNCHERS = {"start-process", "saps", "start", "nohup", "setsid"}
+
+# Start-Process parameters that take a value, so the value isn't mistaken for
+# the program being launched.
+_TAKES_VALUE = {
+    "-verb", "-windowstyle", "-workingdirectory", "-wd", "-credential",
+    "-redirectstandardoutput", "-redirectstandarderror", "-redirectstandardinput",
+    "-argumentlist", "-args", "-arguments", "-filepath", "-path",
+}
+
+_FILE_PATH = re.compile(r"-(?:filepath|path)\s+('[^']*'|\"[^\"]*\"|\S+)", re.I)
+_ARGUMENT_LIST = re.compile(r"-(?:argumentlist|args|arguments)\s+", re.I)
+
+# How deep the wrapper and interpreter rules will follow a command into
+# itself. Three is past anything real; the limit is only here so a command
+# that somehow wraps itself can't spin.
+_MAX_DEPTH = 3
+
 # > redirects and truncates; >> appends and doesn't. A leading digit is a file
 # descriptor (2> log.txt), which still truncates, so it's allowed through - but
 # a target starting with & is another descriptor (2>&1), not a file.
 _REDIRECT = re.compile(r"(?<![>&])>{1,2}(?!>)\s*(&?[^\s|;&<>]+|\"[^\"]*\"|'[^']*')")
 
 
-def escalate(command, exists=os.path.exists):
+def escalate(command, exists=os.path.exists, depth=0):
     """Why `command` should be confirmed even if the model called it safe, as
     a phrase that follows "This " - or None to leave the model's answer alone.
 
     `exists` is how the overwrite rules ask whether a file is already there.
     It's a parameter so the tests can answer without touching the disk.
+
+    `depth` counts how many wrappers deep this already is - a launcher or an
+    interpreter re-enters here with what it was handed. Callers leave it
+    alone.
     """
-    if not command or not command.strip():
+    if not command or not command.strip() or depth > _MAX_DEPTH:
         return None
 
     quoted = _quoted_spans(command)
@@ -193,7 +240,7 @@ def escalate(command, exists=os.path.exists):
     heads = [_head(clause) for clause in clauses]
 
     for clause, head in zip(clauses, heads):
-        reason = _clause_reason(clause, head, exists)
+        reason = _clause_reason(clause, head, exists, depth)
         if reason:
             return reason
 
@@ -208,7 +255,7 @@ def escalate(command, exists=os.path.exists):
     return _redirect_reason(command, quoted, exists)
 
 
-def _clause_reason(clause, head, exists):
+def _clause_reason(clause, head, exists, depth=0):
     if not head:
         return None
 
@@ -217,6 +264,10 @@ def _clause_reason(clause, head, exists):
 
     if head in _DESTRUCTIVE:
         return _DESTRUCTIVE[head]
+
+    # Harmless until told what to change - see _WITH_ARGS.
+    if head in _WITH_ARGS and args:
+        return _WITH_ARGS[head]
 
     # mkfs.ext4, mkfs.xfs and the rest are the same command with the
     # filesystem stuck on the end.
@@ -235,10 +286,20 @@ def _clause_reason(clause, head, exists):
     if head in _INTERPRETERS:
         inline = _inline_command(tokens)
         if inline:
-            return escalate(inline, exists)
+            return escalate(inline, exists, depth + 1)
 
     if head == "start-process" and _has_flag(args, "-verb") and "runas" in [a.lower() for a in args]:
         return "asks for administrator rights"
+
+    # A launcher's own name tells you nothing; what it was handed does. Rebuild
+    # that and classify it instead, so `Start-Process regedit -ArgumentList
+    # '/s','patch.reg'` is read as the registry import it is rather than as an
+    # app being opened. Checked after the runas rule above, which has something
+    # more specific to say about the same command.
+    if head in _LAUNCHERS:
+        wrapped = _wrapped_command(head, clause, tokens)
+        if wrapped:
+            return escalate(wrapped, exists, depth + 1)
 
     if head in ("powershell", "pwsh") and _has_flag(args, "-encodedcommand", "-enc", "-e"):
         return "runs an encoded command, which can't be read before it runs"
@@ -372,6 +433,87 @@ def _unquote(token):
 
 def _has_flag(args, *names):
     return any(arg.lower().split(":")[0] in names for arg in args)
+
+
+def _wrapped_command(head, clause, tokens):
+    """What a launcher was told to run, rebuilt as a command of its own.
+
+    Rebuilt rather than inspected in place, so the rules that follow don't
+    each need to know about wrappers: the result goes back through escalate
+    and is read exactly like anything the user typed plainly.
+    """
+    if head in ("nohup", "setsid"):
+        # These take the command as the rest of the line, redirects and all.
+        return " ".join(tokens[1:]).strip() or None
+    return _start_process_command(clause, tokens)
+
+
+def _start_process_command(clause, tokens):
+    """`Start-Process -FilePath x -ArgumentList a,b` as `x a b`."""
+    path = _FILE_PATH.search(clause)
+    program = _unquote(path.group(1)) if path else _first_positional(tokens)
+    if not program:
+        return None
+
+    listed = _ARGUMENT_LIST.search(clause)
+    if listed:
+        # Read off the clause rather than the tokens: -ArgumentList's value is
+        # a comma-separated list whose items can contain spaces, and the
+        # tokeniser splits on both, which pulls "'Remove-Item notes.txt'" into
+        # pieces that no longer look like a delete.
+        pieces = [_unquote(piece.strip()) for piece in _split_commas(clause[listed.end():])]
+    else:
+        # `Start-Process regedit '/s','patch.reg'` - the same list, positional.
+        pieces = []
+        for token in _positionals(tokens)[1:]:
+            pieces.extend(_unquote(piece.strip()) for piece in _split_commas(token))
+
+    return " ".join([program] + [_requote(piece) for piece in pieces if piece])
+
+
+def _split_commas(text):
+    """`text` split on the commas that are not inside quotes."""
+    parts, current, quote = [], [], None
+    for char in text:
+        if quote:
+            current.append(char)
+            if char == quote:
+                quote = None
+        elif char in "'\"":
+            quote = char
+            current.append(char)
+        elif char == ",":
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+    parts.append("".join(current))
+    return parts
+
+
+def _positionals(tokens):
+    """The tokens that aren't flags, or the values of flags that take one."""
+    found, skip = [], False
+    for token in tokens[1:]:
+        if skip:
+            skip = False
+            continue
+        if token.startswith("-"):
+            skip = _unquote(token).lower() in _TAKES_VALUE
+            continue
+        found.append(_unquote(token))
+    return found
+
+
+def _first_positional(tokens):
+    found = _positionals(tokens)
+    return found[0] if found else None
+
+
+def _requote(argument):
+    """An argument put back in quotes if it needs them, so the rebuilt command
+    tokenises the way the original was written."""
+    return f"'{argument}'" if " " in argument else argument
 
 
 def _inline_command(tokens):

@@ -12,10 +12,12 @@ installs the inference engine, downloads the model, and starts and stops the
 server itself, so there's nothing to set up beyond Python and no background
 service to remember to launch.
 
-The one exception is [asking it to look something up](#looking-things-up-on-the-web):
-a web search sends that search query to DuckDuckGo, the same as typing it into
-a search box would. Nothing else leaves the machine, and it only happens when
-the question can't be answered without it.
+The exceptions are the two things that are about the internet by definition.
+[Asking it to look something up](#looking-things-up-on-the-web) sends that
+search query to DuckDuckGo, the same as typing it into a search box would, and
+only when the question can't be answered without it. [Asking it to open a
+website](#opening-a-website) hands the address to your own browser, which then
+does what a browser does. Nothing else leaves the machine.
 
 Three ways in, none of them better than the others - pick whichever suits how
 you already install things. All three are tens of megabytes, because the
@@ -367,8 +369,9 @@ with the same confidence a 14B's answer would get.
 
 Searches go to DuckDuckGo's no-key HTML endpoint - there's nothing to sign up
 for and nothing to configure, which is the same bargain as the rest of the
-app. It's also the only thing here that talks to the internet: questions about
+app. It's also the only thing the app itself sends anywhere: questions about
 your own machine stay commands, and the query is all that's ever sent.
+Opening a website is the other way out, and it's your browser that goes.
 
 The cost of using a search page rather than a paid API is that DuckDuckGo can
 decide you're a robot - several searches in quick succession will do it - and
@@ -377,9 +380,96 @@ happened and that it clears on its own in a few minutes, rather than reporting
 it as "nothing found", which would send you off rewriting a question that was
 fine.
 
+## Opening a website
+
+"Open eminem on youtube" is an instruction, not a question, and for a while the
+shell answered it as one - it searched the web and came back with a paragraph
+explaining that you could search YouTube for Eminem yourself. A shell that
+describes the action instead of taking it has failed at the only job it has.
+
+```
+ai> open eminem on youtube
+→ Opening a YouTube search for eminem in your browser.
+```
+
+That one doesn't reach the model at all. The address of a YouTube search isn't
+something to reason about, it's a fact, so a couple of dozen sites are written
+down in [ai_shell/rules/sites.py](ai_shell/rules/sites.py) and matched before
+anything is translated - which makes those requests instant, offline, and the
+same every time. Sites that aren't in the table still work; the model writes
+the address itself, which is worse odds than a lookup but far better than
+prose.
+
+The table only fires on a launch verb and a site it recognises, and it hands
+anything doubtful back to the model: a folder that happens to be named after a
+website, a file being opened in an app, "open it on youtube" where *it* means
+something further up the conversation. Guessing wrong there would open a
+browser you didn't ask for and lose the thing you did.
+
+A site you have installed as an app wins over its website. "Open spotify" with
+Spotify on the machine means the app - but "open spotify and play rap" means
+the website, because there's no way to tell the desktop app what to play.
+
+## Opening the system's own tools
+
+The same argument, for a different table. Task Manager, Registry Editor,
+Device Manager, the Settings pages - these aren't listed in the Start Menu
+under the names people call them, so nothing connects "device manager" to
+`devmgmt.msc`, and the app-launch fallback can only look up a name the command
+already got right. A wrong guess is just a failure.
+
+They were also answered inconsistently. "Open registry editor" in a fresh
+session came back safe and ran; the same words after a few turns of
+conversation came back risky and stopped to ask. Same machine, same model,
+temperature zero - only the conversation above it differed. A confirmation
+that shows up sometimes teaches nothing except that confirmations are noise.
+
+So they live in a table too, per OS, in
+[ai_shell/platforms/](ai_shell/platforms/). Ordinary applications are
+deliberately not in it - Notepad and Chrome are in the Start Menu, where the
+app scan already finds them, and a second list of them would be one more thing
+to keep in step.
+
+The same table answers a harder question: switches the shell genuinely cannot
+flip. "Turn off bluetooth" has no honest command behind it on Windows - the
+radio isn't a service, disabling the device needs administrator rights, and
+the real switch is a WinRT call. Asked for one anyway, the model invented
+"Bluetooth Adapter 1" and "Bluetooth Adapter 2" on a machine with one adapter
+called neither, then wrote a `Set-Service` that changed a startup type and
+toggled nothing.
+
+```
+ai> turn off bluetooth
+→ Opening Bluetooth settings, where the switch is - I can't flip it from a command.
+```
+
+One click from what was asked, no administrator rights, same answer every
+time. It isn't what the user asked for and the sentence says so: substituting
+something quietly is worse than failing, but substituting it openly, when the
+alternative is a command that cannot work, is the better answer.
+
+Choices are held to the same standard. The model can't see this machine, so
+anything it offers about one is invention - and a choice naming something that
+isn't there is worse than no choice, because the user picks it and the pick
+means nothing. App suggestions are matched against what's really installed;
+anything the shell can't check against something real is dropped, and the
+question stands on its own.
+
+Opening one of these is safe, because opening it changes nothing.
+`regedit` shows a window; `regedit /s patch.reg` rewrites the registry without
+one, and only the second is worth stopping for. The rules that read a finished
+command draw the same line - see below.
+
 ## How it works (short version)
 
 - You type a request
+- A short list of rules ([ai_shell/rules/](ai_shell/rules/)) gets first look,
+  and answers the handful of requests that have exact answers: opening a known
+  website, opening one of the OS's own tools, and reaching a system switch the
+  shell can't flip itself. A rule says what should
+  happen, never how the answer is spelled, so the shape of a reply lives in
+  one file rather than in every rule. Anything a rule doesn't claim, which is
+  nearly everything, carries on to the model
 - It's sent to a local model (via llama.cpp) with instructions to translate it
   into one real command for *this* machine's shell, and to say whether that
   command is safe or risky - or, when the answer isn't on this machine at all,
@@ -417,9 +507,20 @@ What it looks for:
 
 - **Verbs that need no context** - `rm`, `Remove-Item` and its aliases,
   `shred`, `mkfs`, `dd`, `Format-Volume`, `shutdown`, `taskkill`, `chmod`,
-  `icacls`, `reg`, `systemctl`, `sudo`, `Invoke-Expression`, and
+  `icacls`, `Set-ExecutionPolicy`, `sudo`, `Invoke-Expression`, and
   `git reset --hard` / `clean` / `push --force` and the rest of the
   work-destroying subcommands
+- **Tools that only change something once you tell them what** - `regedit`,
+  `reg`, `netsh`, `bcdedit`, `schtasks`, `systemctl`, `mount`. Bare, every one
+  of them opens a window or prints its usage, so `regedit` on its own is not
+  worth stopping for. `regedit /s patch.reg` rewrites the registry with no
+  window at all, and that one is asked about
+- **Launchers, looked through** - `Start-Process`, `nohup` and `setsid` take
+  the real command as an argument, so the verb at the front of the line is
+  theirs and tells you nothing. What they were handed is rebuilt and read as
+  if it had been typed plainly, which is what keeps
+  `Start-Process regedit -ArgumentList '/s','patch.reg'` from walking past a
+  rule that catches `regedit /s patch.reg`
 - **Verbs that are ordinary until you see what came with them** - a `-Force`
   on a copy or a move, `find ... -delete`, a write into `C:\Windows`, `/etc`,
   `/usr` or a drive root, a package manager with `install` or `remove` on it

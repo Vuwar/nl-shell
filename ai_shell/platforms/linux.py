@@ -46,20 +46,20 @@ class Linux(Posix):
 
     EXAMPLES = r"""Example - risky request:
 User: delete the file called old_notes.txt
-{"command": "rm 'old_notes.txt'", "risk": "risky", "explanation": "Permanently deletes old_notes.txt."}
+{"command": "rm 'old_notes.txt'", "risk": "risky", "explanation": "I'll permanently delete old_notes.txt."}
 
 Example - opening/launching a specific, named application:
 User: open firefox
-{"command": "nohup firefox >/dev/null 2>&1 &", "risk": "safe", "explanation": "Launches Firefox."}
+{"command": "nohup firefox >/dev/null 2>&1 &", "risk": "safe", "explanation": "Launching Firefox."}
 
 Example - yes/no question about files (list the matches, don't test each item):
 User: is there any folder on the desktop
-{"command": "find \"$HOME/Desktop\" -maxdepth 1 -mindepth 1 -type d ! -name '.*'", "risk": "safe", "explanation": "Lists the folders on your desktop."}
+{"command": "find \"$HOME/Desktop\" -maxdepth 1 -mindepth 1 -type d ! -name '.*'", "risk": "safe", "explanation": "Listing the folders on your desktop."}
 
 Example - follow-up referring to an earlier result (reuse the path from the note):
 Note: (context from the shell, not the user) Ran: find '/home/me/Desktop/Photos' -maxdepth 1 -mindepth 1 - Listed 12 items... Folder in context: /home/me/Desktop/Photos
 User: now zip that
-{"command": "zip -r '/home/me/Desktop/Photos.zip' '/home/me/Desktop/Photos'", "risk": "safe", "explanation": "Zips the Photos folder next to itself."}
+{"command": "zip -r '/home/me/Desktop/Photos.zip' '/home/me/Desktop/Photos'", "risk": "safe", "explanation": "Zipping the Photos folder next to itself."}
 
 Example - vague target (ask, don't guess):
 User: open a browser
@@ -69,9 +69,17 @@ Example - something only the internet can answer (search, never refuse):
 User: what's the latest version of python
 {"command": null, "search": "latest Python version release", "risk": null, "explanation": "Looking that up on the web.", "options": null}
 
+Example - something on a website (open the address; don't search, don't explain how to):
+User: open eminem on youtube
+{"command": "nohup xdg-open 'https://www.youtube.com/results?search_query=eminem' >/dev/null 2>&1 &", "search": null, "risk": "safe", "explanation": "Opening a YouTube search for eminem in your browser.", "options": null}
+
+Example - a question about this machine's state (print an answer either way):
+User: is chrome running
+{"command": "if pgrep -x chrome >/dev/null 2>&1; then echo 'Chrome is running.'; else echo 'Chrome is not running.'; fi", "search": null, "risk": "safe", "explanation": "Checking whether Chrome is running.", "options": null}
+
 Example - about this computer, not the world (a command, not a search):
 User: how much disk space have I got left
-{"command": "df -h /", "search": null, "risk": "safe", "explanation": "Shows the free space on your main drive.", "options": null}
+{"command": "df -h /", "search": null, "risk": "safe", "explanation": "Showing the free space on your main drive.", "options": null}
 
 Example - small talk, even with earlier results in the conversation (just
 answer; the user asked for nothing, so there is nothing to offer):

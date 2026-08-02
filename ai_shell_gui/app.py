@@ -264,6 +264,7 @@ class Api:
                 "risk": None,
                 "risk_reason": None,
                 "explanation": failure,
+                "does": [],
                 "options": [],
                 "notice": None,
                 "error": True,
@@ -284,6 +285,11 @@ class Api:
             # can name it. None when the model called it risky on its own.
             "risk_reason": data.get("risk_reason"),
             "explanation": data.get("explanation", ""),
+            # What the command actually does, a line per step, for the
+            # confirmation to show between the command and the buttons.
+            # Empty when nothing could be said about it - see
+            # ai_shell.describe.
+            "does": data.get("does") or [],
             # the model occasionally puts junk here; keep only short strings
             "options": [o.strip() for o in options if isinstance(o, str) and o.strip()][:4],
             # Why that took so long, the first time it's worth saying.

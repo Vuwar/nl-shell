@@ -36,6 +36,18 @@ The user will describe what they want in plain English. Your job:
    "command" null with your answer or clarification in "explanation".
 4. The command's output is shown to the user as the answer, so it must be
    readable on its own. Never produce a bare true/false as the result.
+   It must also always print something. A command that prints nothing when the
+   answer is "no", or when what it looked for isn't there, leaves the user
+   staring at a blank result for a question they asked - which is worse than
+   an error, because it looks like it worked. Write the command so every
+   outcome prints a sentence: test the thing, then print what you found either
+   way. Query a state the plain way rather than digging a value out of a
+   registry path that may not exist.
+   A bare status word is not an answer either. Asked "is bluetooth on", a
+   command that prints "Running" has handed the user a piece of a status
+   table and left them to work out what it means. Print "Bluetooth is on."
+   The user asked a question in words and the answer has to come back in
+   words.
    {current.LISTING_RULE}
 5. Messages beginning "(context from the shell, not the user)" are results
    from commands that already ran - never answer them as if the user wrote
@@ -55,16 +67,68 @@ The user will describe what they want in plain English. Your job:
    actually asking for right now. The interface adds its own "Other" choice
    automatically, so never include one. Never silently substitute something
    you weren't asked for.
+   If the user already named the thing, it is not open and you must not ask.
+   "toggle bluetooth", "open notepad", "restart the print spooler" each name
+   exactly one thing; asking which one they meant reads as not having
+   listened, and it makes the user pick before you do the work anyway.
+   And never invent choices that describe this computer. You cannot see what
+   is installed or plugged into it - see item 10 - so offering "Bluetooth
+   Adapter 1" and "Bluetooth Adapter 2" is offering two things you made up,
+   and a user who picks one has told you nothing you can act on. Choices may
+   name well-known applications and websites. They may never name hardware,
+   devices, drives, network connections, accounts or files, because those are
+   facts about this machine and you have not been shown any of them. If you
+   genuinely need to know which of something there is, that is a command that
+   lists them, not a question.
 7. You cannot see the internet, and what you were taught is out of date. When
    the answer has to be looked up out there - news, prices, versions, sports
-   results, what something is, who someone is, finding a website or a channel
-   or a product - put a short search query in "search", leave "command" null,
-   and say in "explanation" that you're looking it up. The shell runs that
-   search and reads the results back to the user, so this is a real thing you
-   can do: never say you are unable to search, and never answer a
-   looking-up question from memory. "search" is for the world beyond this
-   computer - questions about THIS machine's own files, settings or hardware
-   are shell commands, not searches.
+   results, what something is, who someone is, what a product costs - put a
+   short search query in "search", leave "command" null, and say in
+   "explanation" that you're looking it up. The shell runs that search and
+   reads the results back to the user, so this is a real thing you can do:
+   never say you are unable to search, and never answer a looking-up question
+   from memory. "search" is for the world beyond this computer - questions
+   about THIS machine's own files, settings or hardware are shell commands,
+   not searches.
+8. "search" answers a question. It never carries out an action. Opening a
+   website, or something on a website, is an action and so it is a command:
+   "open youtube", "play X on youtube", "look up Y on wikipedia" all mean open
+   a web address in the browser. Write the address yourself - the site's own
+   search address with the user's words in it - and open it exactly the way
+   you would open a file. Never answer one of these by telling the user how
+   they could search for it themselves; not having to is the point of this
+   shell.
+9. Write "explanation" as the one doing it, never as a description of the
+   command from outside. "Launches Firefox." and "This will delete the file."
+   are both wrong - nobody else is here, the user asked you, so say what you
+   are doing.
+   Which tense depends on what happens next, and the two are not the same:
+   - "safe", and any search: it runs the moment this sentence is shown, so it
+     is already running. Present tense, no "I": "Launching Firefox.",
+     "Listing the folders on your desktop.", "Looking that up on the web."
+   - "risky": the user is asked to confirm it first and may say no, so it is
+     NOT happening yet. Future, with "I": "I'll permanently delete
+     old_notes.txt.", "I'll overwrite notes.txt."
+   Saying "Deleting old_notes.txt." above a confirmation prompt tells the user
+   their file is already gone when nothing has happened at all.
+10. You cannot see this computer. Nothing tells you what is open, what is
+   running, what is installed, what is plugged in, or what a setting is
+   currently set to, and the notes described in item 5 say only what a command
+   did, not what is true now. So never answer as though you had looked:
+   "Bluetooth is already on", "that's already open", "there's no such folder",
+   "it's already closed" are guesses, and they are wrong as often as not.
+   When the user asks for something, carry the request out anyway. Opening
+   something that is already open costs nothing, while refusing on a guess
+   means the user asked for something and got nothing at all. If what is true
+   right now is genuinely the question, write a command that checks and let
+   its output be the answer.
+   The same goes for what you have and haven't done: never say you showed,
+   told, or already gave the user something. You cannot see the screen either.
+   A note saying a command printed nothing means the user was shown nothing -
+   so run it again properly rather than insisting the answer was already
+   there, and never apologise for confusion instead of answering. If a user
+   says you didn't do something, they are looking at the screen and you are
+   not. They are right.
 """
 
 # Not an f-string: the shape below is full of braces that mean themselves.
@@ -239,19 +303,64 @@ def pick_installed_apps(client, user_input, question, installed_names):
 
 
 EXPLAIN_FAILURE_PROMPT = f"""You are the voice of an AI shell used by non-technical people.
-The user asked for something and the action failed. Based on the error text,
-tell the user in ONE short plain sentence why it couldn't be done. Talk about
-the real-world cause, not the mechanics: never mention {current.JARGON}.
+The user asked for something and the action failed. Tell the user in ONE short
+plain sentence why you couldn't do it. Write it in the first person - you are
+the one who tried. Talk about the real-world cause, not the mechanics: never
+mention {current.JARGON}.
+Use ONLY what the error actually says. If the error does not say why it
+failed, say that plainly - "I couldn't do that, and the error doesn't say
+why." - rather than offering the most likely reason. A reason you supplied
+yourself is a guess, the user cannot tell it apart from a real one, and it
+will sometimes contradict what this shell showed them a moment ago. Never
+state anything about what is or isn't installed, running, open or present
+unless the error text says so in as many words.
 Good examples:
-- "Couldn't open that browser - it doesn't seem to be installed on this computer."
-- "Couldn't create the folder - one with that name already exists."
-- "Couldn't delete the file - it's currently in use by another program."
+- "I couldn't open that browser - it doesn't seem to be installed on this computer."
+- "I couldn't create the folder - one with that name already exists."
+- "I couldn't delete the file - it's currently in use by another program."
 Respond with only that one sentence, nothing else."""
+
+# Errors that mean exactly one thing, read here rather than described to the
+# model. Asked to explain "Cannot open bthserv service on computer '.'" - which
+# is what Windows says when you are not an administrator - the model answered
+# "the service is not running" three times out of three, one turn after this
+# same shell had printed "Running" for that service. The text gives it nothing
+# to work from, so it reaches for the most ordinary reason a stop might fail
+# and states it as fact.
+#
+# Only errors with a single unambiguous meaning belong here. Everything else
+# is still the model's, which is the right split: this is a short list of
+# certainties, not a second attempt at the long tail.
+_KNOWN_ERRORS = (
+    (re.compile(r"requires elevation|run (?:this|it) as administrator|"
+                r"administrator privileges|access is denied|"
+                r"cannot open \S+ service on computer", re.I),
+     "I couldn't do that - it needs administrator rights."),
+    (re.compile(r"permission denied|operation not permitted", re.I),
+     "I couldn't do that - I don't have permission to touch that."),
+)
+
+
+def _known_reason(error_text):
+    """The plain-English cause for an error that has only one, or None."""
+    for pattern, sentence in _KNOWN_ERRORS:
+        if pattern.search(error_text or ""):
+            return sentence
+    return None
 
 
 def explain_failure(client, user_input, command, error_text):
     """One plain-English sentence for why the user's request failed. Falls
-    back to a cleaned-up first error line if the model call itself fails."""
+    back to a cleaned-up first error line if the model call itself fails.
+
+    Errors that mean one thing are answered from _KNOWN_ERRORS without asking
+    the model at all - see the note there. It's the same bargain the rest of
+    this app makes: where the answer is a fact, a table beats a 3B every time,
+    and here it also beats it at not contradicting the previous turn.
+    """
+    known = _known_reason(error_text)
+    if known:
+        return known
     try:
         # No schema: the answer is one plain sentence, and there is no shape to
         # hold it to that "respond with only that sentence" doesn't already say.
@@ -628,8 +737,8 @@ def _fallback_reason(error_text):
     for line in (error_text or "").splitlines():
         line = line.strip()
         if line:
-            return f"Couldn't do that: {current.strip_error_prefix(line)}"
-    return "Couldn't do that - it failed without giving a reason."
+            return f"I couldn't do that: {current.strip_error_prefix(line)}"
+    return "I couldn't do that - it failed without giving a reason."
 
 
 def ask_model(client, user_input, history):

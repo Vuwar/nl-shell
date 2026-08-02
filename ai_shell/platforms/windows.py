@@ -178,20 +178,20 @@ class Windows(Platform):
 
     EXAMPLES = """Example - risky request:
 User: delete the file called old_notes.txt
-{"command": "Remove-Item -Path 'old_notes.txt'", "risk": "risky", "explanation": "Permanently deletes old_notes.txt."}
+{"command": "Remove-Item -Path 'old_notes.txt'", "risk": "risky", "explanation": "I'll permanently delete old_notes.txt."}
 
 Example - opening/launching a specific, named application:
 User: open opera gx
-{"command": "Start-Process 'Opera GX'", "risk": "safe", "explanation": "Launches Opera GX."}
+{"command": "Start-Process 'Opera GX'", "risk": "safe", "explanation": "Launching Opera GX."}
 
 Example - yes/no question about files (list the matches, don't test each item):
 User: is there any folder on the desktop
-{"command": "Get-ChildItem -Path $env:USERPROFILE\\Desktop -Directory", "risk": "safe", "explanation": "Lists the folders on your desktop."}
+{"command": "Get-ChildItem -Path $env:USERPROFILE\\Desktop -Directory", "risk": "safe", "explanation": "Listing the folders on your desktop."}
 
 Example - follow-up referring to an earlier result (reuse the path from the note):
 Note: (context from the shell, not the user) Ran: Get-ChildItem -Path C:\\Users\\Me\\Desktop\\Photos - Listed 12 items... Folder in context: C:\\Users\\Me\\Desktop\\Photos
 User: now zip that
-{"command": "Compress-Archive -Path 'C:\\Users\\Me\\Desktop\\Photos' -DestinationPath 'C:\\Users\\Me\\Desktop\\Photos.zip'", "risk": "safe", "explanation": "Zips the Photos folder next to itself."}
+{"command": "Compress-Archive -Path 'C:\\Users\\Me\\Desktop\\Photos' -DestinationPath 'C:\\Users\\Me\\Desktop\\Photos.zip'", "risk": "safe", "explanation": "Zipping the Photos folder next to itself."}
 
 Example - vague target (ask, don't guess):
 User: open a browser
@@ -201,9 +201,21 @@ Example - something only the internet can answer (search, never refuse):
 User: what's the latest version of python
 {"command": null, "search": "latest Python version release", "risk": null, "explanation": "Looking that up on the web.", "options": null}
 
+Example - something on a website (open the address; don't search, don't explain how to):
+User: open eminem on youtube
+{"command": "Start-Process -FilePath 'https://www.youtube.com/results?search_query=eminem'", "search": null, "risk": "safe", "explanation": "Opening a YouTube search for eminem in your browser.", "options": null}
+
+Example - a question about this machine's state (print an answer either way):
+User: is chrome running
+{"command": "if (Get-Process -Name 'chrome' -ErrorAction SilentlyContinue) { 'Chrome is running.' } else { 'Chrome is not running.' }", "search": null, "risk": "safe", "explanation": "Checking whether Chrome is running.", "options": null}
+
+Example - a question answered by a property rather than a yes/no (mind the brackets):
+User: is bluetooth on
+{"command": "if ((Get-Service -Name 'bthserv' -ErrorAction SilentlyContinue).Status -eq 'Running') { 'Bluetooth is on.' } else { 'Bluetooth is off.' }", "search": null, "risk": "safe", "explanation": "Checking whether Bluetooth is on.", "options": null}
+
 Example - about this computer, not the world (a command, not a search):
 User: how much disk space have I got left
-{"command": "Get-PSDrive -PSProvider FileSystem | ForEach-Object { \\"$($_.Name): $([math]::Round($_.Free/1GB,1)) GB free\\" }", "search": null, "risk": "safe", "explanation": "Shows the free space on each drive.", "options": null}
+{"command": "Get-PSDrive -PSProvider FileSystem | ForEach-Object { \\"$($_.Name): $([math]::Round($_.Free/1GB,1)) GB free\\" }", "search": null, "risk": "safe", "explanation": "Showing the free space on each drive.", "options": null}
 
 Example - small talk, even with earlier results in the conversation (just
 answer; the user asked for nothing, so there is nothing to offer):
@@ -211,6 +223,76 @@ Note: (context from the shell, not the user) Ran: Get-ChildItem -Path C:\\Users\
 User: hey
 {"command": null, "risk": null, "explanation": "Hey! Tell me what you'd like to do and I'll take care of it.", "options": null}
 """
+
+    # Windows' own tools. Named the way people ask for them, not the way the
+    # executable is spelled - "device manager" is what a user types and
+    # "devmgmt.msc" is what opens it, and nothing in the Start Menu index
+    # connects the two. Ordinary applications are deliberately absent: those
+    # are in the Start Menu, where the app scan already finds them.
+    SYSTEM_APPS = {
+        "task manager": ("Task Manager", "taskmgr"),
+        "taskmgr": ("Task Manager", "taskmgr"),
+        "registry editor": ("Registry Editor", "regedit"),
+        "regedit": ("Registry Editor", "regedit"),
+        "registry": ("Registry Editor", "regedit"),
+        "device manager": ("Device Manager", "devmgmt.msc"),
+        "disk management": ("Disk Management", "diskmgmt.msc"),
+        "services": ("Services", "services.msc"),
+        "event viewer": ("Event Viewer", "eventvwr.msc"),
+        "task scheduler": ("Task Scheduler", "taskschd.msc"),
+        "computer management": ("Computer Management", "compmgmt.msc"),
+        "control panel": ("Control Panel", "control"),
+        "system information": ("System Information", "msinfo32"),
+        "msinfo32": ("System Information", "msinfo32"),
+        "system configuration": ("System Configuration", "msconfig"),
+        "msconfig": ("System Configuration", "msconfig"),
+        "resource monitor": ("Resource Monitor", "resmon"),
+        "performance monitor": ("Performance Monitor", "perfmon"),
+        "character map": ("Character Map", "charmap"),
+        "command prompt": ("Command Prompt", "cmd"),
+        "file explorer": ("File Explorer", "explorer"),
+        "windows explorer": ("File Explorer", "explorer"),
+        "recycle bin": ("Recycle Bin", "shell:RecycleBinFolder"),
+        # ms-settings: pages. Start-Process hands a URI to whatever is
+        # registered for it, which for these is the Settings app.
+        "settings": ("Settings", "ms-settings:"),
+        "windows settings": ("Settings", "ms-settings:"),
+        "bluetooth settings": ("Bluetooth settings", "ms-settings:bluetooth"),
+        "bluetooth": ("Bluetooth settings", "ms-settings:bluetooth"),
+        "wifi settings": ("Wi-Fi settings", "ms-settings:network-wifi"),
+        "wi-fi settings": ("Wi-Fi settings", "ms-settings:network-wifi"),
+        "network settings": ("Network settings", "ms-settings:network"),
+        "sound settings": ("Sound settings", "ms-settings:sound"),
+        "display settings": ("Display settings", "ms-settings:display"),
+        "power settings": ("Power settings", "ms-settings:powersleep"),
+        "windows update": ("Windows Update", "ms-settings:windowsupdate"),
+        "installed apps": ("Installed apps", "ms-settings:appsfeatures"),
+    }
+
+    # See Platform.SETTINGS_TOGGLES. All ms-settings: pages, so opening one
+    # needs no rights and lands on the switch itself.
+    SETTINGS_TOGGLES = {
+        "bluetooth": ("Bluetooth", "ms-settings:bluetooth"),
+        "wifi": ("Wi-Fi", "ms-settings:network-wifi"),
+        "wi-fi": ("Wi-Fi", "ms-settings:network-wifi"),
+        "wireless": ("Wi-Fi", "ms-settings:network-wifi"),
+        "airplane mode": ("Airplane mode", "ms-settings:network-airplanemode"),
+        "flight mode": ("Airplane mode", "ms-settings:network-airplanemode"),
+        "dark mode": ("Dark mode", "ms-settings:colors"),
+        "light mode": ("Light mode", "ms-settings:colors"),
+        "night light": ("Night light", "ms-settings:nightlight"),
+        "location": ("Location", "ms-settings:privacy-location"),
+        "location services": ("Location", "ms-settings:privacy-location"),
+        "notifications": ("Notifications", "ms-settings:notifications"),
+        "do not disturb": ("Do not disturb", "ms-settings:notifications"),
+        "mobile hotspot": ("Mobile hotspot", "ms-settings:network-mobilehotspot"),
+        "hotspot": ("Mobile hotspot", "ms-settings:network-mobilehotspot"),
+        "vpn": ("VPN", "ms-settings:network-vpn"),
+        "the microphone": ("Microphone", "ms-settings:privacy-microphone"),
+        "microphone": ("Microphone", "ms-settings:privacy-microphone"),
+        "the camera": ("Camera", "ms-settings:privacy-webcam"),
+        "camera": ("Camera", "ms-settings:privacy-webcam"),
+    }
 
     LAUNCH_NOTE = """Requests to open, launch, start, or run a specific, named application are
 always valid, safe shell requests - never refuse those. Use the app's name
@@ -261,6 +343,92 @@ wrong guess fails instead of opening something else."""
 
     def open_command(self, path):
         return f"Start-Process -FilePath {self.quote(path)}"
+
+    # --- tabular output ----------------------------------------------------
+    # Cmdlets that emit objects and change nothing, so re-running one to get a
+    # wider table costs nothing but the time. This list is the safety argument
+    # for the whole feature and is meant to stay a list of certainties: a verb
+    # nobody vouched for gets no projection, and its output is shown as the
+    # text PowerShell sent.
+    #
+    # Get-ChildItem is deliberately absent. It has a projection of its own
+    # that produces clickable rows carrying real paths, and a plain table
+    # would be a downgrade.
+    _TABLE_HEAD = re.compile(
+        r"^\s*(get-service|get-process|get-command|get-module|get-psdrive|"
+        r"get-volume|get-disk|get-partition|get-netadapter|get-netipaddress|"
+        r"get-nettcpconnection|get-pnpdevice|get-scheduledtask|get-hotfix|"
+        r"get-localuser|get-localgroup|get-printer|get-appxpackage|get-alias|"
+        r"get-job|get-winevent|get-ciminstance|get-timezone)\b",
+        re.IGNORECASE,
+    )
+
+    # Stages that pass objects along without touching the machine. Anything
+    # else and the projection is abandoned: Format-Table on the end of
+    # something that already formatted itself produces nonsense, and a stage
+    # this doesn't recognise might not be read-only.
+    _TABLE_STAGE = re.compile(
+        r"^\s*(where-object|where|\?|sort-object|sort|select-object|select|"
+        r"group-object|group)\b",
+        re.IGNORECASE,
+    )
+
+    # Past anything real. The default is 80 columns when output is redirected,
+    # which is what cut "BluetoothUserService_b251c6a" down to
+    # "BluetoothUserSe ..." and took the answer with it.
+    _TABLE_TAIL = " | Format-Table -AutoSize | Out-String -Width 4096"
+
+    def project_table(self, command):
+        if not command or ">" in command or ";" in command:
+            # A redirect writes a file and a semicolon hides a second command.
+            # Either way this is no longer one read-only pipeline.
+            return None
+        stages = command.split("|")
+        if not self._TABLE_HEAD.match(stages[0]):
+            return None
+        if not all(self._TABLE_STAGE.match(stage) for stage in stages[1:]):
+            return None
+        return command.rstrip() + self._TABLE_TAIL
+
+    def parse_table(self, output):
+        """Columns and rows, read off the dashes PowerShell prints under its
+        own headers.
+
+        Those dashes are what makes this reliable rather than a guess: the run
+        of "-" under each heading is exactly as wide as the column, so the
+        boundaries are given rather than inferred from runs of spaces - which
+        would split every value that has a space in it, and "Bluetooth User
+        Support Service" is one.
+        """
+        lines = (output or "").splitlines()
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            # The separator row: nothing on it but dashes and the gaps
+            # between columns. It can't be the first line, because the
+            # headings have to be above it.
+            if index == 0 or not stripped or set(stripped) - {"-", " "}:
+                continue
+            starts = [match.start() for match in re.finditer(r"-+", line)]
+            if len(starts) < 2:
+                continue
+            # Each column runs from where its dashes begin to where the next
+            # column's do, and the last one to the end of the line. Not to the
+            # end of its own dashes: a value can be a character wider than the
+            # run under it and eat into the gap - "Running" under "------" is
+            # the case that showed it - and cutting at the dash would take the
+            # last letter off.
+            edges = list(zip(starts, starts[1:] + [None]))
+            header = lines[index - 1]
+            columns = [header[start:stop].strip() for start, stop in edges]
+            if not all(columns):
+                continue
+            rows = []
+            for row in lines[index + 1:]:
+                if not row.strip():
+                    continue
+                rows.append([row[start:stop].strip() for start, stop in edges])
+            return {"columns": columns, "rows": rows}
+        return None
 
     def strip_error_prefix(self, line):
         # PowerShell errors lead with the cmdlet name ("Start-Process : ...");

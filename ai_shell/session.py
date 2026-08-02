@@ -26,10 +26,10 @@ import threading
 from openai import OpenAI
 
 from ai_shell import corrections, web
-from ai_shell import config, fit, policy, server
+from ai_shell import config, describe, fit, policy, rules, server
 from ai_shell.config import API_KEY, BASE_URL
 from ai_shell.executor import execute_command, list_apps, run_command
-from ai_shell.listing import listing_parent, resolve_listed_paths
+from ai_shell.listing import format_table, listing_parent, resolve_listed_paths
 from ai_shell.llm import answer_from_search, ask_model, explain_failure, pick_installed_apps
 from ai_shell.platforms import current
 
@@ -57,6 +57,18 @@ def _listing_summary(items, kind, parent):
     where = f" in {parent}" if parent else ""
     plural = "" if len(items) == 1 else "s"
     return f"Listed {len(items)} {kind}{plural}{where}: {names}."
+
+
+# What the user is told, and what the history is told, when a command that was
+# supposed to answer something printed nothing at all.
+#
+# Both are needed, and the second is the one that was actually doing damage.
+# "Worked." in the history reads like the check came back positive, so the next
+# turn answers "Bluetooth is on." from a note that contains no such thing - and
+# the turn after that insists it already said so. Saying plainly that nothing
+# came back leaves nothing to read that way.
+NO_ANSWER = "That ran, but it printed nothing at all - so it hasn't answered the question."
+_NO_ANSWER_NOTE = "Ran, but printed nothing. No answer came back, and none was shown to the user."
 
 
 def _output_summary(answer):
@@ -190,7 +202,18 @@ class Session:
         {"command", "search", "risk", "explanation", "options"}. If a command
         or a search comes back, it's stashed as pending so a later run_last()
         can carry it out."""
-        data, rate = ask_model(self.client, user_input, self.history)
+        # A request the rules can answer exactly skips the model entirely -
+        # see ai_shell.rules. Everything after this point is the same either
+        # way, so an answered request still gets classified, recorded in the
+        # history and left pending like any other. The rate is None because
+        # nothing was generated: there was no model call to time, and
+        # reporting a speed for a table lookup would put the graphics-card
+        # notice in front of a user whose request never touched the card.
+        answered = rules.resolve(user_input, rules.Machine(self._scan_apps))
+        data, rate = (
+            (answered.as_data(), None) if answered
+            else ask_model(self.client, user_input, self.history)
+        )
 
         command = data.get("command")
         # One job per turn. The prompt says so, but a model that fills in two
@@ -203,8 +226,13 @@ class Session:
             data["options"] = None
         elif data.get("options"):
             grounded = self._grounded_options(user_input, data)
-            if grounded:
-                data["options"] = grounded
+            # None means "no opinion, keep what the model offered". A list is
+            # an answer, including an empty one: choices the shell couldn't
+            # ground are dropped rather than shown, because a choice that
+            # names something which isn't there is worse than no choice at
+            # all - the user picks it, and what they picked means nothing.
+            if grounded is not None:
+                data["options"] = grounded or None
 
         # The model classified its own output. The rules get the last word,
         # and they only ever say "ask first" - see ai_shell/policy.py for why
@@ -212,6 +240,11 @@ class Session:
         data["risk_reason"] = policy.escalate(command)
         if data["risk_reason"]:
             data["risk"] = "risky"
+
+        # What the command actually does, in plain English, for the
+        # confirmation to show above the buttons. Empty for a command nothing
+        # can describe, which the interfaces render as they always did.
+        data["does"] = describe.describe(command)
 
         # History is appended after grounding so the model's context matches
         # the choices the user actually saw (and may answer with).
@@ -283,14 +316,30 @@ class Session:
         return self.claim_notice(fit.explain(kind, total, free_of_others))
 
     def _grounded_options(self, user_input, data):
-        """Swaps the model's generic app suggestions ("Google Chrome") for
-        apps actually installed on this machine, so every offered choice
-        really exists. Only kicks in for launch-flavored requests; returns None to
-        keep the model's own suggestions (also on scan/model failure, or
-        when nothing installed fits - generic suggestions still beat no
-        question at all)."""
+        """The offered choices, checked against what's really on this machine.
+
+        Returns the choices to use, or None to keep the model's own. An empty
+        list is a real answer and means "offer nothing".
+
+        A choice is only trustworthy if the shell put it there. The model
+        cannot see this computer, so anything it offers about one is
+        invention, and invention here is worse than silence: asked to toggle
+        Bluetooth it offered "Bluetooth Adapter 1" and "Bluetooth Adapter 2"
+        on a machine with one adapter called neither, and whichever the user
+        picked told it nothing. So the only choices that survive are app
+        names matched against the installed list.
+
+        Two cases still keep the model's suggestions, both because the shell
+        failed rather than the model: an app scan that came back empty (on
+        every supported OS that means the scan broke, not that nothing is
+        installed) and a grounding call that errored. Neither is evidence
+        that the choices are wrong, and degrading the question because our
+        own lookup fell over would be the wrong way round.
+        """
         if not _LAUNCHY.search(user_input):
-            return None
+            # Not about launching anything, so there is no list to check
+            # against and nothing here can be verified.
+            return []
         names = [name for name, _ in self._scan_apps()]
         if not names:
             return None
@@ -338,6 +387,11 @@ class Session:
             self._pending = None
             return listing
 
+        table = self._run_table(command)
+        if table is not None:
+            self._pending = None
+            return table
+
         attempts = execute_command(command, apps, self._working_dir())
         self._pending = None
 
@@ -354,6 +408,15 @@ class Session:
             if current.echoes_created_item(command_ran, answer):
                 answer = ""  # the interfaces show their own "done" for empty output
             self._remember_context(command_ran)
+            # Empty output means two different things and the interfaces can
+            # only render one of them. After "make a folder" it means the
+            # folder was made, and "Done" is the whole answer. After "is
+            # bluetooth on" it means the command failed to say anything, and
+            # "Done" tells the user their question was answered when it
+            # wasn't. The request itself is what tells the two apart.
+            if not answer and rules.asks_a_question(hint):
+                self._note_result(f"Ran: {command_ran}", _NO_ANSWER_NOTE)
+                return {"ok": True, "output": NO_ANSWER}
             self._note_result(f"Ran: {command_ran}", _output_summary(answer))
             return {"ok": True, "output": answer}
 
@@ -387,7 +450,7 @@ class Session:
 
         if not results:
             self._note_result(f'Searched the web for "{query}"', "Found nothing.")
-            return {"ok": False, "reason": f"Couldn't find anything for “{query}”."}
+            return {"ok": False, "reason": f"I couldn't find anything for “{query}”."}
 
         # Strictly an improvement on what's already here: a page that won't
         # read leaves its result carrying the snippet it came with, so this
@@ -445,7 +508,7 @@ class Session:
             }
         listing = self._run_listing(current.list_directory_command(path))
         if listing is None:
-            return {"ok": False, "reason": "Couldn't open that folder."}
+            return {"ok": False, "reason": "I couldn't open that folder."}
         # An empty folder has no rows to derive the path from, and losing it
         # would strip the breadcrumbs and strand the user inside with no way
         # back out.
@@ -512,6 +575,48 @@ class Session:
         self._remember_context(command, parent)
         self._note_result(f"Ran: {command}", _listing_summary(items, kind, parent))
         return {"ok": True, "listing": items, "path": parent, "kind": kind}
+
+    def _run_table(self, command):
+        """Output that is really a table, returned as columns and rows.
+
+        The same bargain as _run_listing, for the same reason. A shell prints
+        a table sized for an eighty-column console, which cuts values off
+        mid-word and wraps long rows onto a second line - and by the time the
+        text reaches us the characters are gone, so no amount of rendering
+        gets them back. Re-running the command projected is the only way to
+        have them at all.
+
+        Returns None whenever that isn't possible - the command isn't one of
+        the read-only ones, the projected run failed, or its output didn't
+        parse - and the caller then runs the original and shows its text as
+        usual. Re-running is safe because project_table only accepts commands
+        that read.
+        """
+        projected = current.project_table(command)
+        if not projected:
+            return None
+        result = run_command(projected, self._working_dir())
+        if isinstance(result, Exception) or result.returncode != 0:
+            return None
+        table = current.parse_table(result.stdout or "")
+        if table is None:
+            return None
+        rows = len(table["rows"])
+        self._remember_context(command)
+        self._note_result(
+            f"Ran: {command}",
+            f"Showed the user a table of {rows} row{'' if rows == 1 else 's'}, "
+            f"with the columns: {', '.join(table['columns'])}.",
+        )
+        # The text version rides along, and is not redundant. The two halves
+        # of this app don't update together - a packaged copy can be running
+        # an older window against a newer backend, and an open window is
+        # running whatever bundle it loaded at startup. An interface built
+        # before tables existed reads "output", finds nothing, and draws
+        # nothing at all, so a command that worked looks like it did nothing.
+        # A new result shape has to degrade into an old one on its own rather
+        # than rely on both sides having been updated.
+        return {"ok": True, "table": table, "output": format_table(table)}
 
     def _remember_context(self, command, parent=None):
         """Updates the folder the session is "in" - set by a listing to the

@@ -4,7 +4,7 @@ import sys
 
 from ai_shell import Session, config, models, server, updater
 from ai_shell.config import connection_error
-from ai_shell.listing import format_listing
+from ai_shell.listing import format_listing, format_table
 from ai_shell.platforms import current
 from ai_shell.web import format_sources
 
@@ -137,6 +137,14 @@ def main():
         edited = None
         if risk == "risky":
             print(f"\n  {command}\n")
+            # What that command does, in words, between the command and the
+            # question. Somebody who could read the line above doesn't need
+            # this app; somebody who can't was being asked to approve
+            # something they had no way to evaluate.
+            for line in data.get("does") or ():
+                print(f"    · {line}")
+            if data.get("does"):
+                print()
             choice = input(_confirm_prompt(data.get("risk_reason"))).strip().lower()
             if choice == "e":
                 edited = _edit_command(command)
@@ -154,6 +162,8 @@ def main():
             if result["path"]:
                 print(result["path"])
             print(format_listing(result["listing"], result["kind"]))
+        elif result.get("table") is not None:
+            print(format_table(result["table"]))
         else:
             print(result["output"] if result["output"] else "✓ Done")
 

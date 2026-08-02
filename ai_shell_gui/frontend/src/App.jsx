@@ -322,7 +322,40 @@ const keepGesture = (e) => e.stopPropagation();
 // The confirmation for a risky command: what it is, and a chance to fix it.
 // Its own component because the edit box holds state, and the entry list that
 // renders it is otherwise stateless.
-function ConfirmRow({ command, reason, onDecide }) {
+/* Tabular output as a table, the way a directory listing is already a table.
+   The rows arrive already split into cells by the projection in
+   ai_shell.platforms - the shell's own version was sized for an eighty-column
+   console, which cut values off mid-word and wrapped long rows onto a second
+   line, and no amount of styling recovers characters that are already gone. */
+function ResultTable({ columns, rows }) {
+  if (!rows || rows.length === 0) {
+    return <div className="entry system-line">Nothing there.</div>;
+  }
+  return (
+    <div className="entry table-wrap">
+      <table className="result-table">
+        <thead>
+          <tr>
+            {columns.map((name, index) => (
+              <th key={index}>{name}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {row.map((cell, cellIndex) => (
+                <td key={cellIndex}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ConfirmRow({ command, reason, does, onDecide }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(command);
   const areaRef = useRef(null);
@@ -370,6 +403,18 @@ function ConfirmRow({ command, reason, onDecide }) {
         <pre className="confirm-command" onMouseDown={keepGesture}>
           {command}
         </pre>
+      )}
+      {/* What the command above actually does, in words. Anyone who can read
+          the PowerShell doesn't need this app; anyone who can't was being
+          asked to approve something they had no way to evaluate, under a
+          warning that it can't be undone. Absent when nothing could be said
+          about the command, rather than filled with a guess. */}
+      {!editing && does && does.length > 0 && (
+        <ul className="confirm-does">
+          {does.map((line, index) => (
+            <li key={index}>{line}</li>
+          ))}
+        </ul>
       )}
       <div className="confirm-row">
         {/* Naming what the command does is the point of the rules underneath
@@ -804,11 +849,14 @@ function Entry({ entry, onConfirm, onChoose, onRetry, busy }) {
           {entry.text}
         </div>
       );
+    case "table":
+      return <ResultTable columns={entry.columns} rows={entry.rows} />;
     case "confirm":
       return (
         <ConfirmRow
           command={entry.command}
           reason={entry.reason}
+          does={entry.does}
           onDecide={(decision) => onConfirm(entry.id, decision)}
         />
       );
@@ -1365,9 +1413,9 @@ export default function App() {
     });
   }
 
-  function askConfirmation(command, reason) {
+  function askConfirmation(command, reason, does) {
     return new Promise((resolve) => {
-      const id = addEntry({ kind: "confirm", command, reason });
+      const id = addEntry({ kind: "confirm", command, reason, does });
       confirmResolvers.current[id] = resolve;
     });
   }
@@ -1501,7 +1549,7 @@ export default function App() {
       // version, which the session records as a correction.
       let edited = null;
       if (data.risk === "risky") {
-        const decision = await askConfirmation(data.command, data.risk_reason);
+        const decision = await askConfirmation(data.command, data.risk_reason, data.does);
         if (!decision.proceed) {
           addEntry({ kind: "skipped" });
           setStatus("ok");
@@ -1530,6 +1578,12 @@ export default function App() {
             path: result.path,
             items: result.listing,
             kindLabel: result.kind,
+          });
+        } else if (result.table) {
+          addEntry({
+            kind: "table",
+            columns: result.table.columns,
+            rows: result.table.rows,
           });
         } else if (result.output) {
           addEntry({ kind: "output", text: result.output });
