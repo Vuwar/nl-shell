@@ -4,9 +4,12 @@ The command line is the whole contract with the inference engine, and it is
 the one part of starting a server that can be checked without starting one.
 """
 
+import contextlib
+import threading
 import unittest
+from unittest import mock
 
-from ai_shell import config, server
+from ai_shell import config, models, server
 
 
 class Argv(unittest.TestCase):
@@ -17,8 +20,6 @@ class Argv(unittest.TestCase):
         self.assertEqual(argv[argv.index("-ngl") + 1], "24")
 
     def test_without_a_free_reading_it_falls_back_to_the_configured_answer(self):
-        from unittest import mock
-
         with mock.patch.object(server, "_free_vram_at_start", None):
             self.assertEqual(server._gpu_layers(), config.GPU_LAYERS)
 
@@ -46,6 +47,96 @@ class Argv(unittest.TestCase):
         self.assertEqual(argv[argv.index("-c") + 1], str(config.CONTEXT_SIZE))
         self.assertEqual(argv[argv.index("-ngl") + 1], str(config.GPU_LAYERS))
         self.assertIn("--jinja", argv)
+
+
+class ProgressDecoration(unittest.TestCase):
+    """What ai_shell.weights cannot know about its own download: how many
+    layers the model has, how many of them fit on the card, and whether this
+    installation has any weights at all yet.
+
+    Starting a real server is out of the question here, so everything that
+    touches the disk, the card or a process is stubbed and what is left is
+    the bookkeeping this adds.
+    """
+
+    def setUp(self):
+        # ensure_running writes module globals. Left set, the next test finds
+        # a "running" server and returns before doing anything.
+        def reset():
+            server._process = None
+            server._keepalive = None
+            server._log = None
+
+        self.addCleanup(reset)
+
+    @contextlib.contextmanager
+    def _stubbed(self, weights_ensure=None, installed=(), gpu_layers=19):
+        model = models.by_id("qwen2.5-coder-7b-q4")
+        self.assertEqual(model.layers, 28)   # the fixture, not the code
+
+        def ensure(ref, label, on_status=None, on_progress=None):
+            if weights_ensure:
+                weights_ensure(on_progress)
+            return "/models/model.gguf"
+
+        with contextlib.ExitStack() as stack:
+            for patch in (
+                mock.patch.object(server, "_lock", threading.Lock()),
+                mock.patch.object(server, "_process", None),
+                mock.patch.object(server, "_port_in_use", return_value=False),
+                mock.patch.object(server, "_gpu_layers", return_value=gpu_layers),
+                mock.patch.object(server, "_wait_until_ready"),
+                mock.patch.object(server.runtime, "ensure", return_value="/bin/llama-server"),
+                mock.patch.object(server.weights, "ensure", ensure),
+                mock.patch.object(server.config, "current_model", return_value=model),
+                mock.patch.object(server.config, "installed_models", return_value=list(installed)),
+                mock.patch.object(server.config, "remember_weights"),
+                mock.patch.object(server.config, "MANAGED_SERVER", True),
+                mock.patch.object(server.current, "free_vram_gb", return_value=8.0),
+                mock.patch.object(
+                    server.current, "start_background",
+                    return_value=(mock.Mock(**{"poll.return_value": None}), None),
+                ),
+                mock.patch.object(server.os, "makedirs"),
+                mock.patch("builtins.open", mock.mock_open()),
+                mock.patch("atexit.register"),
+            ):
+                stack.enter_context(patch)
+            yield
+
+    def test_payloads_gain_layers_and_first_install(self):
+        seen = []
+        sent = lambda emit: emit({"phase": "downloading", "label": "Test", "percent": 5})
+        with self._stubbed(weights_ensure=sent, installed=[]):
+            server.ensure_running(on_progress=seen.append)
+
+        downloading = [p for p in seen if p["phase"] == "downloading"]
+        self.assertEqual(len(downloading), 1)
+        self.assertEqual(downloading[0]["layers"], 28)
+        self.assertTrue(downloading[0]["first_install"])
+        # Untouched on the way past, so a field added in weights.py later
+        # needs no change here.
+        self.assertEqual(downloading[0]["percent"], 5)
+
+    def test_a_loading_payload_says_what_goes_on_the_card(self):
+        seen = []
+        with self._stubbed(gpu_layers=19):
+            server.ensure_running(on_progress=seen.append)
+
+        loading = [p for p in seen if p["phase"] == "loading"]
+        self.assertEqual(len(loading), 1)
+        self.assertEqual(loading[0]["gpu_layers"], 19)
+        self.assertEqual(loading[0]["layers"], 28)
+
+    def test_first_install_is_false_when_something_is_already_here(self):
+        seen = []
+        with self._stubbed(installed=["qwen2.5-coder-3b-q4"]):
+            server.ensure_running(on_progress=seen.append)
+        self.assertFalse(seen[0]["first_install"])
+
+    def test_no_on_progress_starts_the_server_as_before(self):
+        with self._stubbed():
+            self.assertTrue(server.ensure_running())
 
 
 if __name__ == "__main__":

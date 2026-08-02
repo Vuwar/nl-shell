@@ -145,19 +145,35 @@ def _fail(message):
     return ServerError(f"{message}\nDetails in {LOG_PATH}")
 
 
-def ensure_running(on_status=None):
+def ensure_running(on_status=None, on_progress=None):
     """Make sure a model server is answering at config.BASE_URL.
 
     Returns True if this call started one, False if it didn't have to. Raises
     ServerError if a server we started never became ready. `on_status` is
     called with short progress lines, because the first run is long enough
-    that silence reads as a hang.
+    that silence reads as a hang. `on_progress` is the same progress as a
+    dict, for the desktop panel, which draws it rather than printing it.
     """
     global _process, _keepalive, _log
 
     def say(message):
         if on_status:
             on_status(message)
+
+    # What a download cannot know about itself, added on the way past: the
+    # model's layer count, which is what the panel draws a brick per, and
+    # whether this installation has any weights at all yet, which is the
+    # difference between an install screen and a line above the input.
+    model = config.current_model()
+    first_install = not config.installed_models()
+
+    def progress(payload):
+        if on_progress:
+            on_progress(dict(
+                payload,
+                layers=model.layers if model else None,
+                first_install=first_install,
+            ))
 
     if not config.MANAGED_SERVER:
         return False  # the user pointed us at their own; it's not ours to start
@@ -188,7 +204,10 @@ def ensure_running(on_status=None):
         # "it wouldn't start" are three different problems with three
         # different fixes, and collapsing them loses the one that matters.
         try:
-            model_path = weights.ensure(config.MODEL_REF, config.MODEL_LABEL, on_status=say)
+            model_path = weights.ensure(
+                config.MODEL_REF, config.MODEL_LABEL,
+                on_status=say, on_progress=progress,
+            )
             # Recorded so the picker can say which models are already here
             # without asking HuggingFace, which is a network call a settings
             # screen shouldn't need.
@@ -203,12 +222,19 @@ def ensure_running(on_status=None):
         global _free_vram_at_start
         _free_vram_at_start = current.free_vram_gb()
 
+        # The last thing the panel is told before the weights go into memory.
+        # Said here rather than after start_background, because loading a
+        # seven-gigabyte model takes the better part of a minute and this is
+        # the sentence that explains that wait.
+        gpu_layers = _gpu_layers()
+        progress({"phase": "loading", "label": config.MODEL_LABEL, "gpu_layers": gpu_layers})
+
         try:
             # Appended to, not truncated: when a start fails and the user
             # tries again, the first failure is usually the informative one.
             _log = open(LOG_PATH, "a", encoding="utf-8", errors="replace")
             _process, _keepalive = current.start_background(
-                _argv(binary, model_path, _gpu_layers()), _log
+                _argv(binary, model_path, gpu_layers), _log
             )
         except FileNotFoundError:
             # Only reachable for a binary the user named: anything else came
@@ -314,7 +340,7 @@ def fit_notice():
     return fit.explain(kind, measured=False)
 
 
-def switch_model(model_id, on_status=None):
+def switch_model(model_id, on_status=None, on_progress=None):
     """Change the model this app runs, fetching its weights if they aren't
     here yet. {"ok": True} once the new server is answering.
 
@@ -337,7 +363,7 @@ def switch_model(model_id, on_status=None):
     stop()
     config.set_model(model_id)
     try:
-        ensure_running(on_status=on_status)
+        ensure_running(on_status=on_status, on_progress=on_progress)
     except ServerError as error:
         # The choice is left pointing at the new model on purpose: the failure
         # is nearly always a half-finished download, and the retry has to
