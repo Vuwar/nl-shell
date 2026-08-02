@@ -229,13 +229,16 @@
   opacity: 1;
 }
 
+/* Faint, but not invisible. At 8% white this read as nothing at all against
+   the panel, which left the filled arc looking like a smudge rather than a
+   fraction of something. */
 .tile-ring-track {
-  stroke: rgba(255, 255, 255, 0.08);
+  stroke: rgba(255, 255, 255, 0.14);
   stroke-width: 2;
 }
 
 .tile-ring-fill {
-  stroke: rgba(139, 123, 255, 0.8);
+  stroke: var(--accent);
   stroke-width: 2;
   stroke-linecap: round;
   transition: stroke-dashoffset 300ms linear;
